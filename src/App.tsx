@@ -53,7 +53,10 @@ export default function App() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden">
-      <div ref={mapContainer} className="absolute inset-0" />
+      {/* Size by height/width, not absolute+inset-0: MapLibre adds an unlayered
+          .maplibregl-map { position: relative } that overrides Tailwind's layered
+          .absolute, which would collapse inset-0 to height 0. */}
+      <div ref={mapContainer} className="h-full w-full" />
       <div className="absolute left-3 top-3 z-10 rounded bg-zinc-900/70 px-3 py-1.5 text-sm font-semibold text-zinc-100 shadow backdrop-blur">
         {"Wayne's Activity Map"}
       </div>
