@@ -1,0 +1,10 @@
+{
+  "places": [
+    {
+      "name": "Home",
+      "kind": "home",
+      "lat": 37.43,
+      "lng": -122.14
+    }
+  ]
+}
