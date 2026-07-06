@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "import:strava": "bun scripts/import-strava.ts",
-    "validate:data": "bun scripts/validate-data.ts"
+    "validate:data": "bun scripts/validate-data.ts",
+    "test": "bun test scripts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.2",

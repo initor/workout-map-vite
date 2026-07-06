@@ -72,7 +72,7 @@ Exit:
 
 ---
 
-## M3 — Privacy layer, then first real publish
+## M3 — Privacy layer, then first real publish  [DONE 2026-07-05]
 
 Question: is the published data safe against every threat in
 `docs/PRIVACY.md`?
@@ -88,9 +88,9 @@ Work:
 - Wayne performs PRIVACY.md §inspection locally before anything is committed.
 
 Exit:
-- [ ] validate:data green on the full real dataset
-- [ ] Wayne signs off the inspection checklist
-- [ ] First commit of `public/data/activities.json` + `tracks-*.geojson`;
+- [x] validate:data green on the full real dataset
+- [x] Wayne signs off the inspection checklist
+- [x] First commit of `public/data/activities.json` + `tracks-*.geojson`;
       production renders real tracks
 
 ---

@@ -1,0 +1,332 @@
+[
+  {
+    "id": "15563301553",
+    "name": "Afternoon Hike",
+    "type": "Hike",
+    "date": "2025-08-23",
+    "year": 2025,
+    "distanceMeters": 1958,
+    "movingTimeSeconds": 1924,
+    "stravaUrl": "https://www.strava.com/activities/15563301553"
+  },
+  {
+    "id": "15576073608",
+    "name": "The first ride: Clipless 101 @ Greene #nbd",
+    "type": "Ride",
+    "date": "2025-08-25",
+    "year": 2025,
+    "distanceMeters": 12374,
+    "movingTimeSeconds": 3143,
+    "stravaUrl": "https://www.strava.com/activities/15576073608"
+  },
+  {
+    "id": "15662177380",
+    "name": "My first group ride: Peninsula Loop",
+    "type": "Ride",
+    "date": "2025-09-01",
+    "year": 2025,
+    "distanceMeters": 43255,
+    "movingTimeSeconds": 7900,
+    "stravaUrl": "https://www.strava.com/activities/15662177380"
+  },
+  {
+    "id": "15731131085",
+    "name": "Morning Ride - Page Mill Pop & Drop",
+    "type": "Ride",
+    "date": "2025-09-07",
+    "year": 2025,
+    "distanceMeters": 20343,
+    "movingTimeSeconds": 3103,
+    "stravaUrl": "https://www.strava.com/activities/15731131085"
+  },
+  {
+    "id": "15890784191",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2025-09-21",
+    "year": 2025,
+    "distanceMeters": 40824,
+    "movingTimeSeconds": 7044,
+    "stravaUrl": "https://www.strava.com/activities/15890784191"
+  },
+  {
+    "id": "15945194172",
+    "name": "Morning Hike",
+    "type": "Hike",
+    "date": "2025-09-26",
+    "year": 2025,
+    "distanceMeters": 4834,
+    "movingTimeSeconds": 4407,
+    "stravaUrl": "https://www.strava.com/activities/15945194172"
+  },
+  {
+    "id": "15967317828",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2025-09-28",
+    "year": 2025,
+    "distanceMeters": 34244,
+    "movingTimeSeconds": 5557,
+    "stravaUrl": "https://www.strava.com/activities/15967317828"
+  },
+  {
+    "id": "16046500827",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2025-10-05",
+    "year": 2025,
+    "distanceMeters": 21726,
+    "movingTimeSeconds": 3319,
+    "stravaUrl": "https://www.strava.com/activities/16046500827"
+  },
+  {
+    "id": "16122318702",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2025-10-12",
+    "year": 2025,
+    "distanceMeters": 42129,
+    "movingTimeSeconds": 6275,
+    "stravaUrl": "https://www.strava.com/activities/16122318702"
+  },
+  {
+    "id": "16193576373",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2025-10-19",
+    "year": 2025,
+    "distanceMeters": 34145,
+    "movingTimeSeconds": 5165,
+    "stravaUrl": "https://www.strava.com/activities/16193576373"
+  },
+  {
+    "id": "16264384814",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2025-10-26",
+    "year": 2025,
+    "distanceMeters": 34068,
+    "movingTimeSeconds": 5242,
+    "stravaUrl": "https://www.strava.com/activities/16264384814"
+  },
+  {
+    "id": "16334642596",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2025-11-02",
+    "year": 2025,
+    "distanceMeters": 21436,
+    "movingTimeSeconds": 3235,
+    "stravaUrl": "https://www.strava.com/activities/16334642596"
+  },
+  {
+    "id": "16407810270",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2025-11-09",
+    "year": 2025,
+    "distanceMeters": 21888,
+    "movingTimeSeconds": 3452,
+    "stravaUrl": "https://www.strava.com/activities/16407810270"
+  },
+  {
+    "id": "16548388642",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2025-11-23",
+    "year": 2025,
+    "distanceMeters": 34641,
+    "movingTimeSeconds": 5098,
+    "stravaUrl": "https://www.strava.com/activities/16548388642"
+  },
+  {
+    "id": "16585687448",
+    "name": "Morning Solo Ride",
+    "type": "Ride",
+    "date": "2025-11-27",
+    "year": 2025,
+    "distanceMeters": 18034,
+    "movingTimeSeconds": 2622,
+    "stravaUrl": "https://www.strava.com/activities/16585687448"
+  },
+  {
+    "id": "16613749410",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2025-11-30",
+    "year": 2025,
+    "distanceMeters": 29998,
+    "movingTimeSeconds": 4521,
+    "stravaUrl": "https://www.strava.com/activities/16613749410"
+  },
+  {
+    "id": "16677809772",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2025-12-07",
+    "year": 2025,
+    "distanceMeters": 21763,
+    "movingTimeSeconds": 3866,
+    "stravaUrl": "https://www.strava.com/activities/16677809772"
+  },
+  {
+    "id": "16833075792",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2025-12-24",
+    "year": 2025,
+    "distanceMeters": 30062,
+    "movingTimeSeconds": 4569,
+    "stravaUrl": "https://www.strava.com/activities/16833075792"
+  },
+  {
+    "id": "16840170204",
+    "name": "Afternoon Ride - wet",
+    "type": "Ride",
+    "date": "2025-12-25",
+    "year": 2025,
+    "distanceMeters": 18082,
+    "movingTimeSeconds": 3357,
+    "stravaUrl": "https://www.strava.com/activities/16840170204"
+  },
+  {
+    "id": "16877851232",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2025-12-29",
+    "year": 2025,
+    "distanceMeters": 30065,
+    "movingTimeSeconds": 4529,
+    "stravaUrl": "https://www.strava.com/activities/16877851232"
+  },
+  {
+    "id": "16994487904",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2026-01-09",
+    "year": 2026,
+    "distanceMeters": 29989,
+    "movingTimeSeconds": 4429,
+    "stravaUrl": "https://www.strava.com/activities/16994487904"
+  },
+  {
+    "id": "17015249636",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2026-01-11",
+    "year": 2026,
+    "distanceMeters": 21301,
+    "movingTimeSeconds": 3618,
+    "stravaUrl": "https://www.strava.com/activities/17015249636"
+  },
+  {
+    "id": "17028305100",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2026-01-12",
+    "year": 2026,
+    "distanceMeters": 30010,
+    "movingTimeSeconds": 4374,
+    "stravaUrl": "https://www.strava.com/activities/17028305100"
+  },
+  {
+    "id": "17053334535",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2026-01-14",
+    "year": 2026,
+    "distanceMeters": 30031,
+    "movingTimeSeconds": 4279,
+    "stravaUrl": "https://www.strava.com/activities/17053334535"
+  },
+  {
+    "id": "17074833461",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2026-01-16",
+    "year": 2026,
+    "distanceMeters": 21799,
+    "movingTimeSeconds": 2958,
+    "stravaUrl": "https://www.strava.com/activities/17074833461"
+  },
+  {
+    "id": "17178123219",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2026-01-25",
+    "year": 2026,
+    "distanceMeters": 21828,
+    "movingTimeSeconds": 2998,
+    "stravaUrl": "https://www.strava.com/activities/17178123219"
+  },
+  {
+    "id": "17252658622",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2026-02-01",
+    "year": 2026,
+    "distanceMeters": 21822,
+    "movingTimeSeconds": 3381,
+    "stravaUrl": "https://www.strava.com/activities/17252658622"
+  },
+  {
+    "id": "17334403751",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2026-02-08",
+    "year": 2026,
+    "distanceMeters": 21892,
+    "movingTimeSeconds": 3021,
+    "stravaUrl": "https://www.strava.com/activities/17334403751"
+  },
+  {
+    "id": "17989817825",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2026-04-05",
+    "year": 2026,
+    "distanceMeters": 21848,
+    "movingTimeSeconds": 3609,
+    "stravaUrl": "https://www.strava.com/activities/17989817825"
+  },
+  {
+    "id": "18640633529",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2026-05-24",
+    "year": 2026,
+    "distanceMeters": 30070,
+    "movingTimeSeconds": 4539,
+    "stravaUrl": "https://www.strava.com/activities/18640633529"
+  },
+  {
+    "id": "18988037875",
+    "name": "Morning Ride",
+    "type": "Ride",
+    "date": "2026-06-19",
+    "year": 2026,
+    "distanceMeters": 64990,
+    "movingTimeSeconds": 10129,
+    "stravaUrl": "https://www.strava.com/activities/18988037875"
+  },
+  {
+    "id": "19155327934",
+    "name": "60km: nooner (modified) ride",
+    "type": "Ride",
+    "date": "2026-07-02",
+    "year": 2026,
+    "distanceMeters": 60280,
+    "movingTimeSeconds": 8661,
+    "stravaUrl": "https://www.strava.com/activities/19155327934"
+  },
+  {
+    "id": "19181148115",
+    "name": "solo - 60km modified Nooner (full Cañada)",
+    "type": "Ride",
+    "date": "2026-07-04",
+    "year": 2026,
+    "distanceMeters": 61152,
+    "movingTimeSeconds": 8802,
+    "stravaUrl": "https://www.strava.com/activities/19181148115"
+  }
+]

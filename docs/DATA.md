@@ -9,6 +9,7 @@ generated artifacts is forbidden; the importer is the only writer.
 public/data/
   activities.json          array<ActivitySummary>, sorted by id asc
   tracks-<year>.geojson    FeatureCollection, one Feature per activity, sorted by id asc
+  places.json              { places: Place[] }: neighborhood markers (e.g. Home)
   fixtures/                hand-written dev fixtures (committed; exempt from "generated only")
 ```
 
@@ -42,6 +43,25 @@ One Feature per activity.
 `properties` = `{ id, name, type, date, year, distanceMeters?, stravaUrl? }`.
 `geometry` = `LineString`, or `MultiLineString` when privacy clipping splits
 a track. Coordinates `[lng, lat]`, exactly 5 decimal places.
+
+## Places
+
+`places.json` = `{ "places": Place[] }`: neighborhood-precision markers, not
+tracks.
+
+```ts
+interface Place {
+  name: string   // display label, e.g. "Home"
+  kind: string   // "home"
+  lat: number    // zone center rounded to EXACTLY 2 decimals (~1 km cell)
+  lng: number
+}
+```
+
+Coordinates are rounded to 2 decimals inside the importer from the gitignored
+zones file; the precise values never appear in code, logs, or output
+(PRIVACY.md T5). validate:data asserts every Place coordinate has at most 2
+decimals (extends V5).
 
 ## Include list
 

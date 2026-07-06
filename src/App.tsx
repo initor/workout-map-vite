@@ -1,24 +1,50 @@
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import type { Feature, FeatureCollection } from 'geojson'
 
 const DARK_STYLE = 'https://tiles.openfreemap.org/styles/dark'
 const POSITRON_STYLE = 'https://tiles.openfreemap.org/styles/positron'
 const PALO_ALTO: [number, number] = [-122.143, 37.4419]
-const TRACKS_ID = 'tracks'
-const TRACKS_URL = '/data/fixtures/tracks-fixture.geojson'
 
-function addTracksLayer(map: maplibregl.Map) {
-  if (map.getSource(TRACKS_ID)) return
-  map.addSource(TRACKS_ID, { type: 'geojson', data: TRACKS_URL })
+interface Activity { year: number }
+interface Place { name: string; kind: string; lat: number; lng: number }
+
+// Load real per-year track shards (all of them) + the neighborhood Home marker.
+async function loadData(map: maplibregl.Map): Promise<void> {
+  if (map.getSource('tracks')) return
+
+  const activities = (await (await fetch('/data/activities.json')).json()) as Activity[]
+  const years = [...new Set(activities.map((a) => a.year))]
+  const shards = await Promise.all(
+    years.map((y) => fetch(`/data/tracks-${y}.geojson`).then((r) => r.json() as Promise<FeatureCollection>)),
+  )
+  const features: Feature[] = shards.flatMap((fc) => fc.features)
+  map.addSource('tracks', { type: 'geojson', data: { type: 'FeatureCollection', features } })
   map.addLayer({
-    id: TRACKS_ID,
+    id: 'tracks',
     type: 'line',
-    source: TRACKS_ID,
+    source: 'tracks',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#fb923c', 'line-width': 2, 'line-opacity': 0.6 },
+  })
+
+  const placesDoc = (await (await fetch('/data/places.json')).json()) as { places: Place[] }
+  const placeFeatures: Feature[] = placesDoc.places.map((p) => ({
+    type: 'Feature',
+    properties: { name: p.name, kind: p.kind },
+    geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+  }))
+  map.addSource('places', { type: 'geojson', data: { type: 'FeatureCollection', features: placeFeatures } })
+  map.addLayer({
+    id: 'places',
+    type: 'circle',
+    source: 'places',
     paint: {
-      'line-color': '#fb923c',
-      'line-width': 2,
-      'line-opacity': 0.6,
+      'circle-radius': 6,
+      'circle-color': '#38bdf8',
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#ffffff',
     },
   })
 }
@@ -42,11 +68,11 @@ export default function App() {
       if (!usedFallback && !map.isStyleLoaded()) {
         usedFallback = true
         map.setStyle(POSITRON_STYLE)
-        map.once('idle', () => addTracksLayer(map))
+        map.once('idle', () => void loadData(map))
       }
     })
 
-    map.on('load', () => addTracksLayer(map))
+    map.on('load', () => void loadData(map))
 
     return () => map.remove()
   }, [])

@@ -1,65 +1,55 @@
 // scripts/import-strava.ts
 //
-// Strava bulk-export importer, v0 (Milestone M2 — staging only).
+// Strava bulk-export importer (Milestone M3: privacy clipping + first publish).
 //
-// Reads ONLY `<dir>/activities.csv` and the track files it references under
-// `<dir>/activities/` (PRIVACY.md R3), keeps every activity with a usable GPS
-// track (DATA.md include list), and writes deterministic staging artifacts to
-// `data/intermediate/staging/`. `type` is carried through from Strava verbatim.
+// Reads ONLY `<dir>/activities.csv` and the FIT tracks it references (PRIVACY.md
+// R3), keeps every activity with a usable GPS track, applies the PRIVACY.md
+// clipping algorithm against the gitignored zones file, and writes the sanitized
+// public artifacts to `public/data/`. `type` is carried through from Strava
+// verbatim.
 //
-// This stage does NO privacy clipping/jitter (that is M3) and does NOT touch
-// `public/`. Staging lives under the gitignored `data/` tree.
+// PRIVACY: zone coordinates (precise or rounded) are NEVER logged (T5). Without
+// the zones file the importer hard-fails (R1) unless --allow-no-privacy-zones is
+// passed, which skips clipping and writes UNCLIPPED output to staging only.
 //
 // Usage: bun run import:strava -- --dir data/raw
-//        bun scripts/import-strava.ts --dir data/raw
+//        bun run import:strava -- --dir data/raw --allow-no-privacy-zones
 
-import { readFileSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
 import { Decoder, Stream } from "@garmin/fitsdk";
+import { clipTrack, round } from "./clip.ts";
+import type { Coord, Zone } from "./clip.ts";
 
 const SEMICIRCLE_TO_DEG = 180 / 2 ** 31;
-const OUT_DIR = "data/intermediate/staging";
+const ZONES_PATH = "data/private/privacy-zones.json";
+const PUBLIC_DIR = "public/data";
+const STAGING_DIR = "data/intermediate/staging";
 const MONTHS: Record<string, string> = {
   Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
   Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
 };
 
-type Coord = [number, number]; // [lng, lat]
-
 interface FitRecord { positionLat?: number; positionLong?: number }
 interface FitSession { totalDistance?: number; totalTimerTime?: number }
 
 interface Summary {
-  id: string;
-  name: string;
-  type: string;
-  date: string;
-  year: number;
-  distanceMeters?: number;
-  movingTimeSeconds?: number;
-  stravaUrl: string;
+  id: string; name: string; type: string; date: string; year: number;
+  distanceMeters?: number; movingTimeSeconds?: number; stravaUrl: string;
 }
+type Geometry =
+  | { type: "LineString"; coordinates: Coord[] }
+  | { type: "MultiLineString"; coordinates: Coord[][] };
+interface Feature { type: "Feature"; properties: Record<string, string | number>; geometry: Geometry }
 
-interface Feature {
-  type: "Feature";
-  properties: Record<string, string | number>;
-  geometry: { type: "LineString"; coordinates: Coord[] };
-}
-
-// --- RFC4180-ish CSV parser: handles quoted fields with commas, embedded
-// newlines, and "" escapes (Strava descriptions contain all three). ---
 function parseCSV(text: string): string[][] {
   const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
+  let row: string[] = [], field = "", inQuotes = false;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false;
-      } else field += c;
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; } else field += c;
     } else if (c === '"') inQuotes = true;
     else if (c === ",") { row.push(field); field = ""; }
     else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
@@ -69,16 +59,15 @@ function parseCSV(text: string): string[][] {
   return rows;
 }
 
-function parseArgs(argv: string[]): { dir: string } {
-  let dir = "data/raw";
+function parseArgs(argv: string[]): { dir: string; allowNoZones: boolean } {
+  let dir = "data/raw", allowNoZones = false;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--dir") { dir = argv[i + 1] ?? dir; i++; }
+    else if (argv[i] === "--allow-no-privacy-zones") allowNoZones = true;
   }
-  return { dir };
+  return { dir, allowNoZones };
 }
 
-// "Jul 4, 2026, 5:47:50 PM" -> { date: "2026-07-04", year: 2026 }.
-// Uses the CSV's date components directly (deterministic; no timezone math).
 function parseDate(s: string): { date: string; year: number } | null {
   const m = s.match(/^(\w{3}) (\d{1,2}), (\d{4})/);
   if (!m) return null;
@@ -87,27 +76,6 @@ function parseDate(s: string): { date: string; year: number } | null {
   return { date: `${m[3]}-${mm}-${m[2].padStart(2, "0")}`, year: Number(m[3]) };
 }
 
-// Round to <=5 decimals with no float noise (Number(toFixed) yields the
-// shortest round-trippable value, so JSON.stringify emits <=5 places).
-function r5(n: number): number { return Number(n.toFixed(5)); }
-
-function haversineMeters(a: Coord, b: Coord): number {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(b[1] - a[1]);
-  const dLng = toRad(b[0] - a[0]);
-  const h = Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-function trackLengthMeters(coords: Coord[]): number {
-  let d = 0;
-  for (let i = 1; i < coords.length; i++) d += haversineMeters(coords[i - 1], coords[i]);
-  return d;
-}
-
-// Decompress + decode a .fit.gz into a [lng,lat] sequence + session summary.
 function parseFit(path: string): { coords: Coord[]; totalDistance?: number; totalTimerTime?: number } {
   const buf = gunzipSync(readFileSync(path));
   const decoder = new Decoder(Stream.fromByteArray(new Uint8Array(buf)));
@@ -126,19 +94,44 @@ function parseFit(path: string): { coords: Coord[]; totalDistance?: number; tota
   return { coords, totalDistance: session?.totalDistance, totalTimerTime: session?.totalTimerTime };
 }
 
-// One feature per line: compact + git-diff-friendly at the activity grain.
 function serializeFeatureCollection(features: Feature[]): string {
   const body = features.map((f) => "    " + JSON.stringify(f)).join(",\n");
   return `{\n  "type": "FeatureCollection",\n  "features": [\n${body}\n  ]\n}\n`;
 }
 
+// Remove only generated artifacts (never public/data/fixtures/).
+function resetOutput(dir: string, isPublic: boolean): void {
+  if (!isPublic) { rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true }); return; }
+  mkdirSync(dir, { recursive: true });
+  for (const f of readdirSync(dir)) {
+    if (f === "activities.json" || f === "places.json" || /^tracks-\d{4}\.geojson$/.test(f)) rmSync(join(dir, f));
+  }
+}
+
 function main(): void {
-  const { dir } = parseArgs(process.argv.slice(2));
+  const { dir, allowNoZones } = parseArgs(process.argv.slice(2));
+
+  // R1: resolve zones + output target. Unclipped output never reaches public/.
+  let zones: Zone[] | null = null, seedSalt = "";
+  let outDir: string, isPublic: boolean;
+  if (allowNoZones) {
+    outDir = STAGING_DIR; isPublic = false;
+    console.log("[import] --allow-no-privacy-zones: NO clipping; writing UNCLIPPED to staging only.");
+  } else if (existsSync(ZONES_PATH)) {
+    const z = JSON.parse(readFileSync(ZONES_PATH, "utf8")) as { seedSalt: string; zones: Zone[] };
+    seedSalt = z.seedSalt; zones = z.zones;
+    outDir = PUBLIC_DIR; isPublic = true;
+  } else {
+    console.error(`[import] FATAL: ${ZONES_PATH} is missing. Refusing to publish unclipped data.\n` +
+      `  Pass --allow-no-privacy-zones to run WITHOUT clipping (staging only, never public/data/).`);
+    process.exit(1);
+  }
+
   const rows = parseCSV(readFileSync(join(dir, "activities.csv"), "utf8"));
   const header = rows[0];
   const col = (name: string) => header.indexOf(name);
   const iId = col("Activity ID"), iDate = col("Activity Date"), iName = col("Activity Name");
-  const iType = col("Activity Type"), iFile = col("Filename"), iDist = col("Distance");
+  const iType = col("Activity Type"), iFile = col("Filename");
   for (const [label, i] of [["Activity ID", iId], ["Activity Date", iDate], ["Activity Name", iName], ["Activity Type", iType], ["Filename", iFile]] as const) {
     if (i < 0) throw new Error(`activities.csv missing required column: ${label}`);
   }
@@ -148,14 +141,13 @@ function main(): void {
   const featuresByYear = new Map<number, { id: string; feature: Feature }[]>();
   const importedTypes: Record<string, number> = {};
   const failures: string[] = [];
-  let candidates = 0, imported = 0, droppedNoGps = 0;
-  let distanceProbe = "";
+  let withTrack = 0, droppedNoGps = 0, droppedByClip = 0, imported = 0, multiCount = 0;
 
   for (const r of data) {
     const type = (r[iType] ?? "").trim();
     const file = (r[iFile] ?? "").trim();
-    if (!file) continue; // no track file => no GPS to render
-    candidates++;
+    if (!file) continue;
+    withTrack++;
 
     const id = (r[iId] ?? "").trim();
     const parsedDate = parseDate((r[iDate] ?? "").trim());
@@ -164,15 +156,24 @@ function main(): void {
     let track;
     try { track = parseFit(join(dir, file)); }
     catch { failures.push(`${id}: FIT decode failed`); continue; }
+    if (track.coords.length < 2) { droppedNoGps++; continue; }
 
-    const coords = track.coords.map((c) => [r5(c[0]), r5(c[1])] as Coord);
-    if (coords.length < 2) { droppedNoGps++; continue; } // indoor / no usable GPS track
+    // Geometry: clipped (public) or full 5dp (staging escape hatch).
+    let geometry: Geometry;
+    if (zones) {
+      const clipped = clipTrack(track.coords, zones, seedSalt, id);
+      if (!clipped) { droppedByClip++; continue; }
+      geometry = clipped.segments.length === 1
+        ? { type: "LineString", coordinates: clipped.segments[0] }
+        : { type: "MultiLineString", coordinates: clipped.segments };
+      if (clipped.segments.length > 1) multiCount++;
+    } else {
+      geometry = { type: "LineString", coordinates: track.coords.map((c) => [round(c[0], 5), round(c[1], 5)] as Coord) };
+    }
     imported++;
     importedTypes[type] = (importedTypes[type] || 0) + 1;
 
-    const distanceMeters = track.totalDistance != null
-      ? Math.round(track.totalDistance)
-      : Math.round(trackLengthMeters(coords));
+    const distanceMeters = track.totalDistance != null ? Math.round(track.totalDistance) : undefined;
     const movingTimeSeconds = track.totalTimerTime != null ? Math.round(track.totalTimerTime) : undefined;
     const name = (r[iName] ?? "").trim();
     const stravaUrl = `https://www.strava.com/activities/${id}`;
@@ -183,46 +184,45 @@ function main(): void {
     summary.stravaUrl = stravaUrl;
     summaries.push(summary);
 
-    const properties: Record<string, string | number> = {
-      id, name, type, date: parsedDate.date, year: parsedDate.year,
-    };
+    const properties: Record<string, string | number> = { id, name, type, date: parsedDate.date, year: parsedDate.year };
     if (distanceMeters != null) properties.distanceMeters = distanceMeters;
     properties.stravaUrl = stravaUrl;
-    const feature: Feature = { type: "Feature", properties, geometry: { type: "LineString", coordinates: coords } };
+    const feature: Feature = { type: "Feature", properties, geometry };
     const bucket = featuresByYear.get(parsedDate.year) ?? [];
     bucket.push({ id, feature });
     featuresByYear.set(parsedDate.year, bucket);
-
-    if (!distanceProbe && iDist >= 0) {
-      distanceProbe = `id ${id}: FIT=${track.totalDistance?.toFixed(0)}m, ` +
-        `GPS-haversine=${trackLengthMeters(coords).toFixed(0)}m, CSV Distance col="${r[iDist]}"`;
-    }
   }
 
   const byId = (a: { id: string }, b: { id: string }) => Number(a.id) - Number(b.id);
   summaries.sort(byId);
 
-  rmSync(OUT_DIR, { recursive: true, force: true });
-  mkdirSync(OUT_DIR, { recursive: true });
-  writeFileSync(join(OUT_DIR, "activities.json"), JSON.stringify(summaries, null, 2) + "\n");
+  resetOutput(outDir, isPublic);
+  writeFileSync(join(outDir, "activities.json"), JSON.stringify(summaries, null, 2) + "\n");
   const years = [...featuresByYear.keys()].sort((a, b) => a - b);
   for (const year of years) {
     const bucket = featuresByYear.get(year)!;
     bucket.sort(byId);
-    writeFileSync(join(OUT_DIR, `tracks-${year}.geojson`), serializeFeatureCollection(bucket.map((x) => x.feature)));
+    writeFileSync(join(outDir, `tracks-${year}.geojson`), serializeFeatureCollection(bucket.map((x) => x.feature)));
   }
 
-  console.log(`[import] source dir: ${dir}`);
-  console.log(`[import] activities in CSV: ${data.length}`);
-  console.log(`[import] with a track file: ${candidates}`);
-  console.log(`[import] imported (usable GPS >=2 pts): ${imported}  types: ${JSON.stringify(importedTypes)}`);
-  console.log(`[import] dropped (no usable GPS / indoor): ${droppedNoGps}`);
+  // Neighborhood-precision Home marker (2 decimals ~1km). Precise value never logged.
+  let placeCount = 0;
+  if (zones) {
+    const places = zones
+      .filter((z) => z.name.toLowerCase() === "home")
+      .map((z) => ({ name: "Home", kind: "home", lat: round(z.lat, 2), lng: round(z.lng, 2) }));
+    placeCount = places.length;
+    writeFileSync(join(outDir, "places.json"), JSON.stringify({ places }, null, 2) + "\n");
+  }
+
+  console.log(`[import] source dir: ${dir}  ->  output: ${outDir}  (clipping: ${zones ? "ON" : "OFF"})`);
+  console.log(`[import] activities with a track file: ${withTrack}`);
+  console.log(`[import] imported: ${imported}  types: ${JSON.stringify(importedTypes)}`);
+  console.log(`[import] MultiLineString (split by clipping): ${multiCount}`);
+  console.log(`[import] dropped: no-GPS/indoor=${droppedNoGps}, by-clip(<20pts/<500m)=${droppedByClip}`);
   console.log(`[import] FIT decode failures: ${failures.length}`);
   if (failures.length) console.log(`[import] failure reasons:\n  ${failures.join("\n  ")}`);
-  console.log(`[import] parse-failure rate: ${candidates ? ((failures.length / candidates) * 100).toFixed(1) : "0"}%`);
-  console.log(`[import] distance cross-check (${distanceProbe || "n/a"})`);
-  console.log(`[import] years: ${years.join(", ") || "none"}`);
-  console.log(`[import] wrote ${OUT_DIR}/activities.json + tracks-<year>.geojson (${years.length} shard(s))`);
+  console.log(`[import] year shards: ${years.join(", ") || "none"}  |  places: ${placeCount}`);
 }
 
 main();
