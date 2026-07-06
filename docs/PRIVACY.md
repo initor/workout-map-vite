@@ -3,6 +3,10 @@
 Public artifacts can reveal where Wayne lives and works, and when he is away,
 unless constrained. These rules are hard. When in doubt, publish less.
 
+Every exported activity is treated as publishable: there is no per-activity
+visibility filter. Privacy comes entirely from the zone clipping below; an
+activity dropped for lack of GPS is simply absent (T4), never flagged.
+
 ## Threats
 
 - **T1 Endpoint inference** — tracks that start/end at home reveal home.
@@ -23,19 +27,21 @@ unless constrained. These rules are hard. When in doubt, publish less.
 
 ```
 data/private/privacy-zones.json
-{ "zones": [ { "name": "home", "lat": <num>, "lng": <num> } ] }
+{ "seedSalt": <string>, "zones": [ { "name": "home", "lat": <num>, "lng": <num> } ] }
 ```
 
 Names are opaque labels. No radius field — the radius is computed per
 activity (below), never configured, so a leaked config shape reveals nothing
-about clip geometry.
+about clip geometry. `seedSalt` is a high-entropy random string: the
+clipping algorithm below is fully public, so its unpredictability comes
+entirely from this gitignored salt.
 
 ## Clipping algorithm
 
 For each activity, for each zone:
 
 1. `clipDistance = 500 + 700 * u`, where
-   `u = uniform01(seed = sha256(activityId + ":" + zone.name))`.
+   `u = uniform01(seed = sha256(seedSalt + ":" + activityId + ":" + zone.name))`.
    Deterministic per (activity, zone); unpredictable across activities;
    range [500, 1200) meters.
 2. Remove every point within `clipDistance` of the zone center (haversine).
@@ -76,8 +82,9 @@ activity id and the violating distance only, never the zone location.
   be loud, never silently permissive.
 - **R2** Changes to `public/data/` land only together with a green
   `validate:data` run.
-- **R3** Raw export handling: unzip only into `data/raw/` (gitignored); read
-  only `activities.csv` and `activities/`.
+- **R3** Raw export handling: raw exports live only under `data/raw/`
+  (gitignored, however they arrive); read only `activities.csv` and
+  `activities/`.
 
 ## Inspection checklist (Wayne, at M3, before the first publish)
 

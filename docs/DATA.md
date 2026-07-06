@@ -22,7 +22,7 @@ year filter (bounded first-paint payload).
 interface ActivitySummary {
   id: string            // Strava activity id
   name: string
-  type: "Ride" | "Run" | "Walk" | "Hike"
+  type: string          // Strava activity type, verbatim (source of truth)
   date: string          // "YYYY-MM-DD" — date ONLY, never a datetime (PRIVACY.md T3)
   year: number
   distanceMeters?: number
@@ -45,9 +45,10 @@ a track. Coordinates `[lng, lat]`, exactly 5 decimal places.
 
 ## Include list
 
-Types: Ride, Run, Walk, Hike — outdoor, GPS-bearing. Everything else
-(Virtual*, Workout, WeightTraining, anything without GPS, and activities
-marked private in the export) is dropped entirely.
+Include every activity that has a usable GPS track (a decoded track of at
+least 2 points). Drop only activities without GPS: there is nothing to
+render. `type` is Strava's own value, carried through verbatim (source of
+truth) for display and later UI filtering; it is never used as a filter.
 
 ## Determinism — load-bearing, not cosmetic
 
@@ -57,7 +58,7 @@ PR-based update flow produces unreviewable full-file diffs:
 - stable sort by activity id everywhere
 - fixed 5-decimal coordinate formatting (no float noise)
 - stable JSON key order; trailing newline; no generation timestamps in output
-- privacy jitter seeded from hash of activity id (PRIVACY.md) —
+- privacy jitter seeded from salted hash of activity id (PRIVACY.md) —
   random-looking, fully reproducible
 
 Verify: run the importer twice, `diff -r` the two staging dirs → empty.
