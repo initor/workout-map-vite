@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Private Strava data (never commit); interim guard, M2 formalizes per docs/PLAN.md.
+# Anchored to repo root so public/data/ (committed artifacts + fixtures) stays tracked.
+/data/
