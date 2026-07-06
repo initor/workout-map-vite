@@ -1,0 +1,88 @@
+# PRIVACY — threat model and invariants
+
+Public artifacts can reveal where Wayne lives and works, and when he is away,
+unless constrained. These rules are hard. When in doubt, publish less.
+
+## Threats
+
+- **T1 Endpoint inference** — tracks that start/end at home reveal home.
+- **T2 Radius inversion** — clipping at a FIXED radius R makes every clipped
+  track terminate on a circle of radius R around the zone center; three
+  endpoints recover the center by intersection. This is the documented
+  weakness of Strava's own privacy zones. Randomizing the clip distance per
+  activity breaks the inversion.
+- **T3 Schedule leakage** — start times reveal daily patterns. Public data is
+  date-only, never datetime; no per-point timestamps anywhere.
+- **T4 Hidden-activity metadata leakage** — an excluded activity must be
+  absent from all artifacts; a `visible: false` flag is itself a leak.
+- **T5 Zone-coordinate leakage** — the zones file IS the secret. Its
+  coordinates must never appear in code, logs, tests, docs, error messages,
+  or commits.
+
+## Zones config (gitignored)
+
+```
+data/private/privacy-zones.json
+{ "zones": [ { "name": "home", "lat": <num>, "lng": <num> } ] }
+```
+
+Names are opaque labels. No radius field — the radius is computed per
+activity (below), never configured, so a leaked config shape reveals nothing
+about clip geometry.
+
+## Clipping algorithm
+
+For each activity, for each zone:
+
+1. `clipDistance = 500 + 700 * u`, where
+   `u = uniform01(seed = sha256(activityId + ":" + zone.name))`.
+   Deterministic per (activity, zone); unpredictable across activities;
+   range [500, 1200) meters.
+2. Remove every point within `clipDistance` of the zone center (haversine).
+3. Unconditionally drop the first and last 5 points of every track —
+   belt-and-braces against T1 for stops at unconfigured locations.
+4. If removal splits a track, keep it as a MultiLineString.
+5. Drop the activity entirely if fewer than 20 points or less than 500 m of
+   track remain.
+6. Round all coordinates to 5 decimals (~1.1 m) as the LAST step.
+
+The jitter does the privacy work; the rounding does the size work; the seed
+preserves byte-determinism (DATA.md).
+
+## Verifier — validate:data MUST assert all of these
+
+- **V1** No published coordinate lies within 500 m (the minimum clip
+  distance) of any zone center.
+- **V2** Endpoint-drop behavior is covered by importer unit tests (it is not
+  observable from public data alone).
+- **V3** Public JSON contains no keys outside the DATA.md schemas — catches
+  `visible`/`source`/debug leakage structurally.
+- **V4** Every `date` matches `YYYY-MM-DD`; no time component anywhere.
+- **V5** Every coordinate has at most 5 decimal places.
+- **V6** No `*.gpx`, `*.tcx`, `*.fit`, `*.zip` (or `.gz` variants) anywhere
+  under `public/`.
+- **V7** The id set of `activities.json` equals the union of ids across
+  `tracks-*.geojson` — no orphans in either direction.
+
+V1 requires reading `data/private/privacy-zones.json` locally. The validator
+never embeds or prints zone coordinates (T5): failures report the offending
+activity id and the violating distance only, never the zone location.
+
+## Operational rules
+
+- **R1** `import:strava` hard-fails if the zones file is missing, unless
+  `--allow-no-privacy-zones` is passed explicitly — and that flag refuses to
+  write into `public/data/` (staging only). Absence of a gitignored file must
+  be loud, never silently permissive.
+- **R2** Changes to `public/data/` land only together with a green
+  `validate:data` run.
+- **R3** Raw export handling: unzip only into `data/raw/` (gitignored); read
+  only `activities.csv` and `activities/`.
+
+## Inspection checklist (Wayne, at M3, before the first publish)
+
+- [ ] Zoom to each zone: no line enters the clip area; track termini scatter
+      at varied distances — no clean circle (that would be T2)
+- [ ] Skim 3 random activities end to end for anything odd
+- [ ] Search public artifacts for any coordinate with 6+ decimals: none
+- [ ] `git status` shows nothing from `data/raw|private|intermediate`
