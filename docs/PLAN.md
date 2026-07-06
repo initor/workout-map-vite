@@ -106,6 +106,13 @@ Work:
 - Header link to Wayne's Strava athlete page (URL from a small
   `src/config.ts`; Wayne supplies the athlete id).
 - Mobile viewport sanity pass.
+- Attribution control compact by default: `attributionControl: { compact: true }`
+  on the Map constructor (collapsed to the info button, expandable on click;
+  never removed or hidden). [Wayne, 2026-07-05]
+- Light/dark theme toggle (dark default; light = positron). `setStyle()` destroys
+  custom sources/layers, so wrap source+layer setup in one idempotent function
+  and re-run it on `style.load` after every switch. Sync the Tailwind `dark`
+  class + a per-theme track color with the map; persist in localStorage. [Wayne, 2026-07-05]
 
 Exit:
 - [ ] Toggling type/year adds/removes lines without a reload

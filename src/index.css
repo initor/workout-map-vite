@@ -1,1 +1,4 @@
 @import "tailwindcss";
+
+/* Class-based dark mode: the app toggles .dark on <html> to match the map theme. */
+@custom-variant dark (&:where(.dark, .dark *));
