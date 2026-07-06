@@ -33,6 +33,10 @@ without Wayne's explicit pick** — it is a parking lot, not a queue.
   `recordMesgs[].heartRate` streams, which the importer deliberately drops today
   (schedule/effort granularity, size). Deferred: decide the privacy/size trade
   before adding per-point anything.
+- **Per-type HR in the stats panel.** `stats.json` captures `avgHeartRateBpm` per
+  type (`byType[t].avgHeartRateBpm`), but only the overall figure is rendered (the
+  totals summary strip). A per-type HR column/row is a small view-layer add when
+  wanted.
 
 ## UI / UX
 

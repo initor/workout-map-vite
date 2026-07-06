@@ -13,11 +13,11 @@ import { haversineMeters } from "./clip.ts";
 import type { Coord, Zone } from "./clip.ts";
 
 const SUMMARY_KEYS = new Set(["id", "name", "type", "date", "year", "distanceMeters", "movingTimeSeconds", "elevationGainMeters", "caloriesKcal", "avgHeartRate", "maxHeartRate", "stravaUrl"]);
-const GEO_PROP_KEYS = new Set(["id", "name", "type", "date", "year", "distanceMeters", "elevationGainMeters", "caloriesKcal", "avgHeartRate", "maxHeartRate", "stravaUrl"]);
+const GEO_PROP_KEYS = new Set(["id", "name", "type", "date", "year", "distanceMeters", "movingTimeSeconds", "elevationGainMeters", "caloriesKcal", "avgHeartRate", "maxHeartRate", "stravaUrl"]);
 const PLACE_KEYS = new Set(["name", "kind", "lat", "lng"]);
 const STATS_TOP_KEYS = new Set(["totals", "byType", "byYear"]);
-const LEAF_BUCKET_KEYS = new Set(["count", "movingTimeSeconds", "caloriesKcal"]);
-const TYPE_BUCKET_KEYS = new Set(["count", "movingTimeSeconds", "caloriesKcal", "byYear"]);
+const LEAF_BUCKET_KEYS = new Set(["count", "movingTimeSeconds", "caloriesKcal", "avgHeartRateBpm"]);
+const TYPE_BUCKET_KEYS = new Set(["count", "movingTimeSeconds", "caloriesKcal", "avgHeartRateBpm", "byYear"]);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DATE_ANYWHERE_RE = /\d{4}-\d{2}-\d{2}/; // stats.json must contain no date-shaped string
 const YEAR_RE = /^\d{4}$/;
@@ -177,6 +177,7 @@ function main(): void {
       if (typeof rec.count !== "number" || !Number.isInteger(rec.count) || rec.count < 0) fail(`stats.json: ${where}.count must be a non-negative integer`);
       if (typeof rec.movingTimeSeconds !== "number" || !Number.isFinite(rec.movingTimeSeconds) || rec.movingTimeSeconds < 0) fail(`stats.json: ${where}.movingTimeSeconds must be a non-negative number`);
       if (typeof rec.caloriesKcal !== "number" || !Number.isFinite(rec.caloriesKcal) || rec.caloriesKcal < 0) fail(`stats.json: ${where}.caloriesKcal must be a non-negative number`);
+      if (rec.avgHeartRateBpm !== undefined && (typeof rec.avgHeartRateBpm !== "number" || !Number.isFinite(rec.avgHeartRateBpm) || rec.avgHeartRateBpm <= 0 || rec.avgHeartRateBpm > 300)) fail(`stats.json: ${where}.avgHeartRateBpm must be a plausible bpm (0-300)`);
       return rec;
     };
     const checkYearMap = (where: string, g: unknown): void => {

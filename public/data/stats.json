@@ -2,13 +2,15 @@
   "totals": {
     "count": 285,
     "movingTimeSeconds": 475095,
-    "caloriesKcal": 79694
+    "caloriesKcal": 79694,
+    "avgHeartRateBpm": 147
   },
   "byType": {
     "Crossfit": {
       "count": 2,
       "movingTimeSeconds": 2421,
       "caloriesKcal": 169,
+      "avgHeartRateBpm": 152,
       "byYear": {
         "2025": {
           "count": 2,
@@ -21,6 +23,7 @@
       "count": 2,
       "movingTimeSeconds": 5539,
       "caloriesKcal": 554,
+      "avgHeartRateBpm": 113,
       "byYear": {
         "2025": {
           "count": 2,
@@ -33,6 +36,7 @@
       "count": 32,
       "movingTimeSeconds": 148435,
       "caloriesKcal": 22310,
+      "avgHeartRateBpm": 144,
       "byYear": {
         "2025": {
           "count": 19,
@@ -50,6 +54,7 @@
       "count": 1,
       "movingTimeSeconds": 34,
       "caloriesKcal": 8,
+      "avgHeartRateBpm": 63,
       "byYear": {
         "2025": {
           "count": 1,
@@ -62,6 +67,7 @@
       "count": 248,
       "movingTimeSeconds": 318666,
       "caloriesKcal": 56653,
+      "avgHeartRateBpm": 149,
       "byYear": {
         "2025": {
           "count": 122,
