@@ -12,10 +12,15 @@ import { join } from "node:path";
 import { haversineMeters } from "./clip.ts";
 import type { Coord, Zone } from "./clip.ts";
 
-const SUMMARY_KEYS = new Set(["id", "name", "type", "date", "year", "distanceMeters", "movingTimeSeconds", "elevationGainMeters", "stravaUrl"]);
-const GEO_PROP_KEYS = new Set(["id", "name", "type", "date", "year", "distanceMeters", "stravaUrl"]);
+const SUMMARY_KEYS = new Set(["id", "name", "type", "date", "year", "distanceMeters", "movingTimeSeconds", "elevationGainMeters", "caloriesKcal", "avgHeartRate", "maxHeartRate", "stravaUrl"]);
+const GEO_PROP_KEYS = new Set(["id", "name", "type", "date", "year", "distanceMeters", "elevationGainMeters", "caloriesKcal", "avgHeartRate", "maxHeartRate", "stravaUrl"]);
 const PLACE_KEYS = new Set(["name", "kind", "lat", "lng"]);
+const STATS_TOP_KEYS = new Set(["totals", "byType", "byYear"]);
+const LEAF_BUCKET_KEYS = new Set(["count", "movingTimeSeconds", "caloriesKcal"]);
+const TYPE_BUCKET_KEYS = new Set(["count", "movingTimeSeconds", "caloriesKcal", "byYear"]);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_ANYWHERE_RE = /\d{4}-\d{2}-\d{2}/; // stats.json must contain no date-shaped string
+const YEAR_RE = /^\d{4}$/;
 const ZONES_PATH = "data/private/privacy-zones.json";
 const RAW_EXT_RE = /\.(gpx|tcx|fit|zip|gz)$/i;
 // V1: clip keeps points >= clipDistance (>= 500 m); the final 5-decimal rounding
@@ -75,7 +80,7 @@ function main(): void {
     if (typeof s.type !== "string" || !s.type) fail(`activities.json[${id}]: type must be a non-empty string`);
     if (typeof s.date !== "string" || !DATE_RE.test(s.date)) fail(`activities.json[${id}]: date not YYYY-MM-DD`); // V4
     if (typeof s.year !== "number" || (typeof s.date === "string" && Number(s.date.slice(0, 4)) !== s.year)) fail(`activities.json[${id}]: year mismatch`);
-    for (const k of ["distanceMeters", "movingTimeSeconds", "elevationGainMeters"] as const) {
+    for (const k of ["distanceMeters", "movingTimeSeconds", "elevationGainMeters", "caloriesKcal", "avgHeartRate", "maxHeartRate"] as const) {
       if (s[k] !== undefined && (typeof s[k] !== "number" || !Number.isFinite(s[k] as number))) fail(`activities.json[${id}]: ${k} must be a finite number`);
     }
     if (s.stravaUrl !== undefined && (typeof s.stravaUrl !== "string" || !(s.stravaUrl as string).startsWith("https://www.strava.com/activities/"))) fail(`activities.json[${id}]: bad stravaUrl`);
@@ -157,6 +162,53 @@ function main(): void {
     }
   }
 
+  // --- stats.json (aggregate-only: no dates, no keys outside the schema) ---
+  let statsActivities: number | null = null;
+  const statsPath = join(dir, "stats.json");
+  if (existsSync(statsPath)) {
+    const sraw = readFileSync(statsPath, "utf8");
+    if (!sraw.endsWith("\n")) fail("stats.json: missing trailing newline");
+    if (DATE_ANYWHERE_RE.test(sraw)) fail("stats.json: contains a YYYY-MM-DD date-shaped string (aggregates only, no dates)"); // T3/T4
+    const st = JSON.parse(sraw) as Record<string, unknown>;
+    for (const k of Object.keys(st)) if (!STATS_TOP_KEYS.has(k)) fail(`stats.json: unexpected top-level key "${k}"`);
+    const checkLeaf = (where: string, b: unknown): Record<string, unknown> | null => {
+      if (typeof b !== "object" || b === null) { fail(`stats.json: ${where} must be an object`); return null; }
+      const rec = b as Record<string, unknown>;
+      if (typeof rec.count !== "number" || !Number.isInteger(rec.count) || rec.count < 0) fail(`stats.json: ${where}.count must be a non-negative integer`);
+      if (typeof rec.movingTimeSeconds !== "number" || !Number.isFinite(rec.movingTimeSeconds) || rec.movingTimeSeconds < 0) fail(`stats.json: ${where}.movingTimeSeconds must be a non-negative number`);
+      if (typeof rec.caloriesKcal !== "number" || !Number.isFinite(rec.caloriesKcal) || rec.caloriesKcal < 0) fail(`stats.json: ${where}.caloriesKcal must be a non-negative number`);
+      return rec;
+    };
+    const checkYearMap = (where: string, g: unknown): void => {
+      if (typeof g !== "object" || g === null) { fail(`stats.json: ${where} must be an object`); return; }
+      for (const [k, v] of Object.entries(g as Record<string, unknown>)) {
+        if (!YEAR_RE.test(k)) fail(`stats.json: ${where} has invalid year key "${k}"`);
+        const leaf = checkLeaf(`${where}["${k}"]`, v);
+        if (leaf) for (const kk of Object.keys(leaf)) if (!LEAF_BUCKET_KEYS.has(kk)) fail(`stats.json: ${where}["${k}"] has unexpected key "${kk}"`);
+      }
+    };
+    // totals: leaf bucket
+    if (st.totals === undefined) fail("stats.json: missing totals");
+    else {
+      const leaf = checkLeaf("totals", st.totals);
+      if (leaf) { for (const kk of Object.keys(leaf)) if (!LEAF_BUCKET_KEYS.has(kk)) fail(`stats.json: totals has unexpected key "${kk}"`); statsActivities = (leaf.count as number) ?? null; }
+    }
+    // byType: type buckets (count + movingTimeSeconds + nested byYear)
+    const bt = st.byType;
+    if (typeof bt !== "object" || bt === null) fail("stats.json: byType must be an object");
+    else for (const [t, v] of Object.entries(bt as Record<string, unknown>)) {
+      if (!t.length) fail("stats.json: byType has an empty type key");
+      const rec = checkLeaf(`byType["${t}"]`, v);
+      if (rec) {
+        for (const kk of Object.keys(rec)) if (!TYPE_BUCKET_KEYS.has(kk)) fail(`stats.json: byType["${t}"] has unexpected key "${kk}"`);
+        if (rec.byYear === undefined) fail(`stats.json: byType["${t}"] missing byYear`);
+        else checkYearMap(`byType["${t}"].byYear`, rec.byYear);
+      }
+    }
+    // byYear: leaf buckets keyed by year
+    checkYearMap("byYear", st.byYear);
+  }
+
   // --- V6: no raw track files anywhere under public/ ---
   for (const f of walk("public")) if (RAW_EXT_RE.test(f)) fail(`V6: raw track file under public/: ${f}`);
 
@@ -165,7 +217,7 @@ function main(): void {
   for (const id of geoIds) if (!summaryIds.has(id)) fail(`V7: id ${id} in a track shard but not activities.json`);
 
   console.log(`[validate] dir: ${dir}  |  zones loaded: ${zones.length}`);
-  console.log(`[validate] activities: ${summaries.length}  |  track features: ${geoIds.size}  |  places: ${placeCount}`);
+  console.log(`[validate] activities: ${summaries.length}  |  track features: ${geoIds.size}  |  places: ${placeCount}  |  stats activities: ${statsActivities ?? "n/a"}`);
   console.log(`[validate] V1 closest published track point to any zone: ${v1MinMeters === Infinity ? "n/a" : v1MinMeters.toFixed(1) + " m"} (>= ${MIN_CLIP_M})`);
   console.log(`[validate] worst geometry/stored distance ratio: ${worstRatio.toFixed(2)} (<= ${DIST_RATIO_MAX})`);
   if (errors.length) {

@@ -1,0 +1,91 @@
+{
+  "totals": {
+    "count": 285,
+    "movingTimeSeconds": 475095,
+    "caloriesKcal": 79694
+  },
+  "byType": {
+    "Crossfit": {
+      "count": 2,
+      "movingTimeSeconds": 2421,
+      "caloriesKcal": 169,
+      "byYear": {
+        "2025": {
+          "count": 2,
+          "movingTimeSeconds": 2421,
+          "caloriesKcal": 169
+        }
+      }
+    },
+    "Hike": {
+      "count": 2,
+      "movingTimeSeconds": 5539,
+      "caloriesKcal": 554,
+      "byYear": {
+        "2025": {
+          "count": 2,
+          "movingTimeSeconds": 5539,
+          "caloriesKcal": 554
+        }
+      }
+    },
+    "Ride": {
+      "count": 32,
+      "movingTimeSeconds": 148435,
+      "caloriesKcal": 22310,
+      "byYear": {
+        "2025": {
+          "count": 19,
+          "movingTimeSeconds": 83597,
+          "caloriesKcal": 12467
+        },
+        "2026": {
+          "count": 13,
+          "movingTimeSeconds": 64838,
+          "caloriesKcal": 9843
+        }
+      }
+    },
+    "Walk": {
+      "count": 1,
+      "movingTimeSeconds": 34,
+      "caloriesKcal": 8,
+      "byYear": {
+        "2025": {
+          "count": 1,
+          "movingTimeSeconds": 34,
+          "caloriesKcal": 8
+        }
+      }
+    },
+    "Workout": {
+      "count": 248,
+      "movingTimeSeconds": 318666,
+      "caloriesKcal": 56653,
+      "byYear": {
+        "2025": {
+          "count": 122,
+          "movingTimeSeconds": 161055,
+          "caloriesKcal": 28744
+        },
+        "2026": {
+          "count": 126,
+          "movingTimeSeconds": 157611,
+          "caloriesKcal": 27909
+        }
+      }
+    }
+  },
+  "byYear": {
+    "2025": {
+      "count": 146,
+      "movingTimeSeconds": 252646,
+      "caloriesKcal": 41942
+    },
+    "2026": {
+      "count": 139,
+      "movingTimeSeconds": 222449,
+      "caloriesKcal": 37752
+    }
+  }
+}

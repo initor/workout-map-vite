@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "import:strava": "bun scripts/import-strava.ts",
     "validate:data": "bun scripts/validate-data.ts",
+    "check:geometry": "bun scripts/check-geometry-drift.ts",
     "test": "bun test scripts"
   },
   "dependencies": {

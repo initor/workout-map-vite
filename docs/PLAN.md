@@ -121,18 +121,57 @@ Exit:
 
 ---
 
-## M5 — Polish + runbook
+## M5 — Polish + runbook  [CODE COMPLETE 2026-07-06]
 
 Work:
-- Stats panel aggregated from `activities.json` (counts, total distance, by
-  type/year).
-- Loading and empty states.
-- README runbook for the update loop: request export → import → validate →
-  inspect → commit → CD deploys.
+- Importer (one rerun): added `elevationGainMeters` (CSV Elevation Gain),
+  `caloriesKcal` (FIT session total_calories, else CSV Calories), and
+  `avgHeartRate`/`maxHeartRate` (FIT session, Ride-scoped — see EXPORT-RECON.md
+  recon) to ActivitySummary + GeoJSON properties. New `public/data/stats.json`
+  aggregates the FULL `activities.csv` — count + moving time + calories by type
+  and by year (each type also split by year), INCLUDING indoor activities.
+  Regenerated `public/data/`; track geometry stayed byte-identical to the
+  committed shards (properties-only diff). validate:data extended: new fields in
+  the V3 allowlist; stats.json carries no date-shaped string and no key outside
+  its schema.
+- UI (final pass — color encodes activity type; one control surface):
+  - Per-type theme-aware color tokens (Ride orange, Hike violet, Walk teal,
+    Workout rose, Crossfit amber), defined once and used consistently in tracks,
+    legend dots, hover highlight, and the Home disc. Opacity accumulation encodes
+    repeat-frequency per hue. White casing (light theme) sits under all hues.
+  - ONE control surface, top-left (identity block + on-page title deleted;
+    document `<title>` keeps the name). Header: Strava-orange "Strava" link with
+    external-link icon (left), sun/moon theme button (right). Below: totals
+    (incl. calories), per-type legend-filter rows with type-color dots, "Showing
+    n of m tracks". Collapses to a pill (with the activity count) on small
+    viewports. Only other on-map UI is the attribution control, bottom-right.
+  - Legend-as-filter, uniform: GPS rows (Ride/Hike/Walk) toggle tracks; indoor
+    rows (Workout/Crossfit) toggle the Home marker + disc (count/popup reflect
+    enabled types; hidden when all off). Toggled-off = dimmed row; Totals never
+    change. All year filtering gone; all shards load up front.
+  - Track ergonomics: an invisible fat hit layer (width 14) owns all pointer
+    events; hover highlights via feature-state (width 4, full opacity, keeps hue);
+    click opens the popup.
+  - Basemaps: dark (fallback positron); light = liberty (fallback bright).
+    Overlaps accumulate toward "hot" (light casing 0.35 / line 0.55; dark line
+    0.5, no casing).
+  - One popup design system: `closeButton:false` + our own themed card (panel
+    tokens, dark/light aware, custom close; closes on map click and Esc). Activity
+    popups show distance/elevation/calories/HR; the Home popup shows the indoor
+    total, hours, calories, and by-year split.
+  - Home marker: labeled ("Home . <n> workouts") over a saturated heat disc (the
+    dominant enabled indoor hue, deepest heat step, theme-aware). Neighborhood-
+    precision coordinate unchanged; PRIVACY.md invariants untouched.
+  - Favicon replicated from the blog repo. Loading and error states retained.
+- README runbook for the update loop: export -> `data/raw` -> import -> validate
+  -> geometry-drift check -> inspection ONLY if geometry changed -> commit -> CD.
+  New `bun run check:geometry` gates the inspection step.
+- `docs/BACKLOG.md` seeded with post-v1 polish (parking lot, not a queue).
 
 Exit:
-- [ ] A future session can update the data using only the README
-- [ ] Wayne is willing to link the site from www.waynewen.com
+- [x] A future session can update the data using only the README
+      (self-contained runbook + `check:geometry` gate; ready for a dry run)
+- [ ] Wayne is willing to link the site from www.waynewen.com  (Wayne's call)
 
 ---
 

@@ -7,6 +7,8 @@
     "year": 2025,
     "distanceMeters": 1958,
     "movingTimeSeconds": 1924,
+    "elevationGainMeters": 58,
+    "caloriesKcal": 147,
     "stravaUrl": "https://www.strava.com/activities/15563301553"
   },
   {
@@ -17,6 +19,8 @@
     "year": 2025,
     "distanceMeters": 12374,
     "movingTimeSeconds": 3143,
+    "elevationGainMeters": 29,
+    "caloriesKcal": 289,
     "stravaUrl": "https://www.strava.com/activities/15576073608"
   },
   {
@@ -27,6 +31,10 @@
     "year": 2025,
     "distanceMeters": 43255,
     "movingTimeSeconds": 7900,
+    "elevationGainMeters": 342,
+    "caloriesKcal": 927,
+    "avgHeartRate": 143,
+    "maxHeartRate": 164,
     "stravaUrl": "https://www.strava.com/activities/15662177380"
   },
   {
@@ -37,6 +45,10 @@
     "year": 2025,
     "distanceMeters": 20343,
     "movingTimeSeconds": 3103,
+    "elevationGainMeters": 159,
+    "caloriesKcal": 438,
+    "avgHeartRate": 145,
+    "maxHeartRate": 173,
     "stravaUrl": "https://www.strava.com/activities/15731131085"
   },
   {
@@ -47,6 +59,8 @@
     "year": 2025,
     "distanceMeters": 40824,
     "movingTimeSeconds": 7044,
+    "elevationGainMeters": 385,
+    "caloriesKcal": 1229,
     "stravaUrl": "https://www.strava.com/activities/15890784191"
   },
   {
@@ -57,6 +71,8 @@
     "year": 2025,
     "distanceMeters": 4834,
     "movingTimeSeconds": 4407,
+    "elevationGainMeters": 181,
+    "caloriesKcal": 407,
     "stravaUrl": "https://www.strava.com/activities/15945194172"
   },
   {
@@ -67,6 +83,8 @@
     "year": 2025,
     "distanceMeters": 34244,
     "movingTimeSeconds": 5557,
+    "elevationGainMeters": 291,
+    "caloriesKcal": 1011,
     "stravaUrl": "https://www.strava.com/activities/15967317828"
   },
   {
@@ -77,6 +95,10 @@
     "year": 2025,
     "distanceMeters": 21726,
     "movingTimeSeconds": 3319,
+    "elevationGainMeters": 154,
+    "caloriesKcal": 462,
+    "avgHeartRate": 152,
+    "maxHeartRate": 181,
     "stravaUrl": "https://www.strava.com/activities/16046500827"
   },
   {
@@ -87,6 +109,10 @@
     "year": 2025,
     "distanceMeters": 42129,
     "movingTimeSeconds": 6275,
+    "elevationGainMeters": 319,
+    "caloriesKcal": 933,
+    "avgHeartRate": 139,
+    "maxHeartRate": 172,
     "stravaUrl": "https://www.strava.com/activities/16122318702"
   },
   {
@@ -97,6 +123,10 @@
     "year": 2025,
     "distanceMeters": 34145,
     "movingTimeSeconds": 5165,
+    "elevationGainMeters": 294,
+    "caloriesKcal": 815,
+    "avgHeartRate": 145,
+    "maxHeartRate": 171,
     "stravaUrl": "https://www.strava.com/activities/16193576373"
   },
   {
@@ -107,6 +137,10 @@
     "year": 2025,
     "distanceMeters": 34068,
     "movingTimeSeconds": 5242,
+    "elevationGainMeters": 284,
+    "caloriesKcal": 812,
+    "avgHeartRate": 130,
+    "maxHeartRate": 167,
     "stravaUrl": "https://www.strava.com/activities/16264384814"
   },
   {
@@ -117,6 +151,10 @@
     "year": 2025,
     "distanceMeters": 21436,
     "movingTimeSeconds": 3235,
+    "elevationGainMeters": 151,
+    "caloriesKcal": 529,
+    "avgHeartRate": 149,
+    "maxHeartRate": 175,
     "stravaUrl": "https://www.strava.com/activities/16334642596"
   },
   {
@@ -127,6 +165,10 @@
     "year": 2025,
     "distanceMeters": 21888,
     "movingTimeSeconds": 3452,
+    "elevationGainMeters": 152,
+    "caloriesKcal": 528,
+    "avgHeartRate": 144,
+    "maxHeartRate": 172,
     "stravaUrl": "https://www.strava.com/activities/16407810270"
   },
   {
@@ -137,6 +179,10 @@
     "year": 2025,
     "distanceMeters": 34641,
     "movingTimeSeconds": 5098,
+    "elevationGainMeters": 300,
+    "caloriesKcal": 823,
+    "avgHeartRate": 120,
+    "maxHeartRate": 166,
     "stravaUrl": "https://www.strava.com/activities/16548388642"
   },
   {
@@ -147,6 +193,8 @@
     "year": 2025,
     "distanceMeters": 18034,
     "movingTimeSeconds": 2622,
+    "elevationGainMeters": 152,
+    "caloriesKcal": 536,
     "stravaUrl": "https://www.strava.com/activities/16585687448"
   },
   {
@@ -157,6 +205,10 @@
     "year": 2025,
     "distanceMeters": 29998,
     "movingTimeSeconds": 4521,
+    "elevationGainMeters": 293,
+    "caloriesKcal": 747,
+    "avgHeartRate": 151,
+    "maxHeartRate": 168,
     "stravaUrl": "https://www.strava.com/activities/16613749410"
   },
   {
@@ -167,6 +219,10 @@
     "year": 2025,
     "distanceMeters": 21763,
     "movingTimeSeconds": 3866,
+    "elevationGainMeters": 152,
+    "caloriesKcal": 458,
+    "avgHeartRate": 130,
+    "maxHeartRate": 155,
     "stravaUrl": "https://www.strava.com/activities/16677809772"
   },
   {
@@ -177,6 +233,10 @@
     "year": 2025,
     "distanceMeters": 30062,
     "movingTimeSeconds": 4569,
+    "elevationGainMeters": 284,
+    "caloriesKcal": 718,
+    "avgHeartRate": 154,
+    "maxHeartRate": 177,
     "stravaUrl": "https://www.strava.com/activities/16833075792"
   },
   {
@@ -187,6 +247,10 @@
     "year": 2025,
     "distanceMeters": 18082,
     "movingTimeSeconds": 3357,
+    "elevationGainMeters": 109,
+    "caloriesKcal": 353,
+    "avgHeartRate": 127,
+    "maxHeartRate": 152,
     "stravaUrl": "https://www.strava.com/activities/16840170204"
   },
   {
@@ -197,6 +261,10 @@
     "year": 2025,
     "distanceMeters": 30065,
     "movingTimeSeconds": 4529,
+    "elevationGainMeters": 284,
+    "caloriesKcal": 732,
+    "avgHeartRate": 153,
+    "maxHeartRate": 172,
     "stravaUrl": "https://www.strava.com/activities/16877851232"
   },
   {
@@ -207,6 +275,10 @@
     "year": 2026,
     "distanceMeters": 29989,
     "movingTimeSeconds": 4429,
+    "elevationGainMeters": 282,
+    "caloriesKcal": 655,
+    "avgHeartRate": 152,
+    "maxHeartRate": 172,
     "stravaUrl": "https://www.strava.com/activities/16994487904"
   },
   {
@@ -217,6 +289,10 @@
     "year": 2026,
     "distanceMeters": 21301,
     "movingTimeSeconds": 3618,
+    "elevationGainMeters": 152,
+    "caloriesKcal": 479,
+    "avgHeartRate": 132,
+    "maxHeartRate": 167,
     "stravaUrl": "https://www.strava.com/activities/17015249636"
   },
   {
@@ -227,6 +303,10 @@
     "year": 2026,
     "distanceMeters": 30010,
     "movingTimeSeconds": 4374,
+    "elevationGainMeters": 282,
+    "caloriesKcal": 722,
+    "avgHeartRate": 155,
+    "maxHeartRate": 173,
     "stravaUrl": "https://www.strava.com/activities/17028305100"
   },
   {
@@ -237,6 +317,10 @@
     "year": 2026,
     "distanceMeters": 30031,
     "movingTimeSeconds": 4279,
+    "elevationGainMeters": 283,
+    "caloriesKcal": 755,
+    "avgHeartRate": 155,
+    "maxHeartRate": 169,
     "stravaUrl": "https://www.strava.com/activities/17053334535"
   },
   {
@@ -247,6 +331,10 @@
     "year": 2026,
     "distanceMeters": 21799,
     "movingTimeSeconds": 2958,
+    "elevationGainMeters": 149,
+    "caloriesKcal": 489,
+    "avgHeartRate": 152,
+    "maxHeartRate": 170,
     "stravaUrl": "https://www.strava.com/activities/17074833461"
   },
   {
@@ -257,6 +345,10 @@
     "year": 2026,
     "distanceMeters": 21828,
     "movingTimeSeconds": 2998,
+    "elevationGainMeters": 153,
+    "caloriesKcal": 530,
+    "avgHeartRate": 159,
+    "maxHeartRate": 178,
     "stravaUrl": "https://www.strava.com/activities/17178123219"
   },
   {
@@ -267,6 +359,8 @@
     "year": 2026,
     "distanceMeters": 21822,
     "movingTimeSeconds": 3381,
+    "elevationGainMeters": 154,
+    "caloriesKcal": 520,
     "stravaUrl": "https://www.strava.com/activities/17252658622"
   },
   {
@@ -277,6 +371,10 @@
     "year": 2026,
     "distanceMeters": 21892,
     "movingTimeSeconds": 3021,
+    "elevationGainMeters": 151,
+    "caloriesKcal": 525,
+    "avgHeartRate": 158,
+    "maxHeartRate": 175,
     "stravaUrl": "https://www.strava.com/activities/17334403751"
   },
   {
@@ -287,6 +385,10 @@
     "year": 2026,
     "distanceMeters": 21848,
     "movingTimeSeconds": 3609,
+    "elevationGainMeters": 152,
+    "caloriesKcal": 499,
+    "avgHeartRate": 140,
+    "maxHeartRate": 171,
     "stravaUrl": "https://www.strava.com/activities/17989817825"
   },
   {
@@ -297,6 +399,10 @@
     "year": 2026,
     "distanceMeters": 30070,
     "movingTimeSeconds": 4539,
+    "elevationGainMeters": 281,
+    "caloriesKcal": 653,
+    "avgHeartRate": 154,
+    "maxHeartRate": 174,
     "stravaUrl": "https://www.strava.com/activities/18640633529"
   },
   {
@@ -307,6 +413,10 @@
     "year": 2026,
     "distanceMeters": 64990,
     "movingTimeSeconds": 10129,
+    "elevationGainMeters": 557,
+    "caloriesKcal": 1337,
+    "avgHeartRate": 140,
+    "maxHeartRate": 175,
     "stravaUrl": "https://www.strava.com/activities/18988037875"
   },
   {
@@ -317,6 +427,10 @@
     "year": 2026,
     "distanceMeters": 60280,
     "movingTimeSeconds": 8661,
+    "elevationGainMeters": 493,
+    "caloriesKcal": 1326,
+    "avgHeartRate": 150,
+    "maxHeartRate": 171,
     "stravaUrl": "https://www.strava.com/activities/19155327934"
   },
   {
@@ -327,6 +441,10 @@
     "year": 2026,
     "distanceMeters": 61152,
     "movingTimeSeconds": 8802,
+    "elevationGainMeters": 538,
+    "caloriesKcal": 1353,
+    "avgHeartRate": 150,
+    "maxHeartRate": 170,
     "stravaUrl": "https://www.strava.com/activities/19181148115"
   }
 ]

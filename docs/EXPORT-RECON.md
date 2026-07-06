@@ -93,3 +93,31 @@ cadence only), so the GPS predicate drops them. (This happens to be the same
 2. **All activities are publishable.** No per-activity visibility filter is
    needed (and `activities.csv` exposes no such flag anyway). Privacy comes
    entirely from M3 zone clipping.
+
+## M5 field recon — calories & heart rate (session-level)
+
+Coverage from parsing all 284 FIT session messages, with the CSV columns as
+fallback candidates, by type (n = activities; no coordinates/names printed):
+
+| Type | n | FIT total_calories | FIT avg/max HR | CSV Calories | CSV avg/max HR |
+|------|--:|--:|--:|--:|--:|
+| Workout | 248 | 100% | 0% | 100% | 92% |
+| Ride | 32 | 13% | 81% | 100% | 94% |
+| Hike | 2 | 100% | 0% | 100% | 100% |
+| Crossfit | 2 | 50% | 0% | 50% | 50% |
+| Walk | 1 | 100% | 0% | 100% | 100% |
+| **All** | **285** | **90%** | **9%** | **100%** | **92%** |
+
+Decisions (nothing dropped — both fields have real data):
+
+- **`caloriesKcal` — KEPT.** FIT `total_calories` covers 90% overall but only
+  13% of Rides; the CSV `Calories` column covers 100%. So `caloriesKcal` = FIT
+  `total_calories` when present, else CSV `Calories` (100% reachable). The
+  `stats.json` calorie aggregates use the CSV `Calories` column for all 285
+  activities (consistent with moving time being CSV-sourced in stats).
+- **`avgHeartRate` / `maxHeartRate` — KEPT, FIT session-only, Ride-scoped.** FIT
+  session HR exists only on Rides (81% of them); non-Ride FIT sessions carry no
+  HR at all. Per spec (session-level FIT, no per-point streams, no CSV fallback
+  for HR), HR is emitted only where the FIT session has it — so in this export it
+  appears on ~81% of Ride popups and on no Hike popups. Colour-by-HR (needs
+  per-point streams) is deferred to BACKLOG.
