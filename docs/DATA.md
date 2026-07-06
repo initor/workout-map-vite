@@ -57,7 +57,7 @@ PR-based update flow produces unreviewable full-file diffs:
 - stable sort by activity id everywhere
 - fixed 5-decimal coordinate formatting (no float noise)
 - stable JSON key order; trailing newline; no generation timestamps in output
-- privacy jitter seeded from hash of activity id (PRIVACY.md) —
+- privacy jitter seeded from salted hash of activity id (PRIVACY.md) —
   random-looking, fully reproducible
 
 Verify: run the importer twice, `diff -r` the two staging dirs → empty.

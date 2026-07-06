@@ -23,19 +23,21 @@ unless constrained. These rules are hard. When in doubt, publish less.
 
 ```
 data/private/privacy-zones.json
-{ "zones": [ { "name": "home", "lat": <num>, "lng": <num> } ] }
+{ "seedSalt": <string>, "zones": [ { "name": "home", "lat": <num>, "lng": <num> } ] }
 ```
 
 Names are opaque labels. No radius field — the radius is computed per
 activity (below), never configured, so a leaked config shape reveals nothing
-about clip geometry.
+about clip geometry. `seedSalt` is a high-entropy random string: the
+clipping algorithm below is fully public, so its unpredictability comes
+entirely from this gitignored salt.
 
 ## Clipping algorithm
 
 For each activity, for each zone:
 
 1. `clipDistance = 500 + 700 * u`, where
-   `u = uniform01(seed = sha256(activityId + ":" + zone.name))`.
+   `u = uniform01(seed = sha256(seedSalt + ":" + activityId + ":" + zone.name))`.
    Deterministic per (activity, zone); unpredictable across activities;
    range [500, 1200) meters.
 2. Remove every point within `clipDistance` of the zone center (haversine).
