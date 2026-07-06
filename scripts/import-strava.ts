@@ -32,12 +32,16 @@ const MONTHS: Record<string, string> = {
 };
 
 interface FitRecord { positionLat?: number; positionLong?: number }
-interface FitSession { totalDistance?: number; totalTimerTime?: number }
+interface FitSession { totalDistance?: number; totalTimerTime?: number; totalCalories?: number; avgHeartRate?: number; maxHeartRate?: number }
 
 interface Summary {
   id: string; name: string; type: string; date: string; year: number;
-  distanceMeters?: number; movingTimeSeconds?: number; stravaUrl: string;
+  distanceMeters?: number; movingTimeSeconds?: number; elevationGainMeters?: number;
+  caloriesKcal?: number; avgHeartRate?: number; maxHeartRate?: number; stravaUrl: string;
 }
+interface Bucket { count: number; movingTimeSeconds: number; caloriesKcal: number }
+interface TypeBucket extends Bucket { byYear: Record<string, Bucket> }
+interface Stats { totals: Bucket; byType: Record<string, TypeBucket>; byYear: Record<string, Bucket> }
 type Geometry =
   | { type: "LineString"; coordinates: Coord[] }
   | { type: "MultiLineString"; coordinates: Coord[][] };
@@ -76,7 +80,7 @@ function parseDate(s: string): { date: string; year: number } | null {
   return { date: `${m[3]}-${mm}-${m[2].padStart(2, "0")}`, year: Number(m[3]) };
 }
 
-function parseFit(path: string): { coords: Coord[]; totalDistance?: number; totalTimerTime?: number } {
+function parseFit(path: string): { coords: Coord[]; totalDistance?: number; totalTimerTime?: number; totalCalories?: number; avgHeartRate?: number; maxHeartRate?: number } {
   const buf = gunzipSync(readFileSync(path));
   const decoder = new Decoder(Stream.fromByteArray(new Uint8Array(buf)));
   const { messages } = decoder.read() as {
@@ -91,7 +95,11 @@ function parseFit(path: string): { coords: Coord[]; totalDistance?: number; tota
     coords.push([lng, lat]);
   }
   const session = (messages.sessionMesgs ?? [])[0];
-  return { coords, totalDistance: session?.totalDistance, totalTimerTime: session?.totalTimerTime };
+  return {
+    coords,
+    totalDistance: session?.totalDistance, totalTimerTime: session?.totalTimerTime,
+    totalCalories: session?.totalCalories, avgHeartRate: session?.avgHeartRate, maxHeartRate: session?.maxHeartRate,
+  };
 }
 
 function serializeFeatureCollection(features: Feature[]): string {
@@ -104,7 +112,7 @@ function resetOutput(dir: string, isPublic: boolean): void {
   if (!isPublic) { rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true }); return; }
   mkdirSync(dir, { recursive: true });
   for (const f of readdirSync(dir)) {
-    if (f === "activities.json" || f === "places.json" || /^tracks-\d{4}\.geojson$/.test(f)) rmSync(join(dir, f));
+    if (f === "activities.json" || f === "places.json" || f === "stats.json" || /^tracks-\d{4}\.geojson$/.test(f)) rmSync(join(dir, f));
   }
 }
 
@@ -132,6 +140,11 @@ function main(): void {
   const col = (name: string) => header.indexOf(name);
   const iId = col("Activity ID"), iDate = col("Activity Date"), iName = col("Activity Name");
   const iType = col("Activity Type"), iFile = col("Filename");
+  // Optional (degrade gracefully if a future export renames them): "Moving Time"
+  // (seconds) feeds stats.json; "Elevation Gain" (metres) feeds the per-activity
+  // elevation. Both are single, unambiguous columns (unlike the duplicated
+  // Distance/Elapsed Time/Commute pairs), so indexOf resolves them correctly.
+  const iMoving = col("Moving Time"), iElev = col("Elevation Gain"), iCalories = col("Calories");
   for (const [label, i] of [["Activity ID", iId], ["Activity Date", iDate], ["Activity Name", iName], ["Activity Type", iType], ["Filename", iFile]] as const) {
     if (i < 0) throw new Error(`activities.csv missing required column: ${label}`);
   }
@@ -175,17 +188,38 @@ function main(): void {
 
     const distanceMeters = track.totalDistance != null ? Math.round(track.totalDistance) : undefined;
     const movingTimeSeconds = track.totalTimerTime != null ? Math.round(track.totalTimerTime) : undefined;
+    // Elevation from the CSV "Elevation Gain" (metres). The FIT session carries
+    // totalAscent only for Rides; the CSV covers Rides AND Hikes and matches FIT
+    // where both exist, so it is the fuller, single source for the imported set.
+    const elevRaw = iElev >= 0 ? Number((r[iElev] ?? "").trim()) : NaN;
+    const elevationGainMeters = Number.isFinite(elevRaw) ? Math.round(elevRaw) : undefined;
+    // Calories: FIT session total_calories, else the CSV Calories column (recon:
+    // FIT covers 90% but only 13% of Rides; CSV covers 100%). HR: FIT session only
+    // (recon: present on Rides, absent on other types); no per-point streams.
+    const csvCal = iCalories >= 0 ? Number((r[iCalories] ?? "").trim()) : NaN;
+    const caloriesKcal = track.totalCalories != null ? Math.round(track.totalCalories)
+      : (Number.isFinite(csvCal) ? Math.round(csvCal) : undefined);
+    const avgHeartRate = track.avgHeartRate != null ? Math.round(track.avgHeartRate) : undefined;
+    const maxHeartRate = track.maxHeartRate != null ? Math.round(track.maxHeartRate) : undefined;
     const name = (r[iName] ?? "").trim();
     const stravaUrl = `https://www.strava.com/activities/${id}`;
 
     const summary: Summary = { id, name, type, date: parsedDate.date, year: parsedDate.year };
     if (distanceMeters != null) summary.distanceMeters = distanceMeters;
     if (movingTimeSeconds != null) summary.movingTimeSeconds = movingTimeSeconds;
+    if (elevationGainMeters != null) summary.elevationGainMeters = elevationGainMeters;
+    if (caloriesKcal != null) summary.caloriesKcal = caloriesKcal;
+    if (avgHeartRate != null) summary.avgHeartRate = avgHeartRate;
+    if (maxHeartRate != null) summary.maxHeartRate = maxHeartRate;
     summary.stravaUrl = stravaUrl;
     summaries.push(summary);
 
     const properties: Record<string, string | number> = { id, name, type, date: parsedDate.date, year: parsedDate.year };
     if (distanceMeters != null) properties.distanceMeters = distanceMeters;
+    if (elevationGainMeters != null) properties.elevationGainMeters = elevationGainMeters;
+    if (caloriesKcal != null) properties.caloriesKcal = caloriesKcal;
+    if (avgHeartRate != null) properties.avgHeartRate = avgHeartRate;
+    if (maxHeartRate != null) properties.maxHeartRate = maxHeartRate;
     properties.stravaUrl = stravaUrl;
     const feature: Feature = { type: "Feature", properties, geometry };
     const bucket = featuresByYear.get(parsedDate.year) ?? [];
@@ -215,6 +249,54 @@ function main(): void {
     writeFileSync(join(outDir, "places.json"), JSON.stringify({ places }, null, 2) + "\n");
   }
 
+  // stats.json — aggregates over the FULL activities.csv (every row, INCLUDING
+  // indoor activities that never reach the map, e.g. GPS-less CrossFit). Counts
+  // and total moving time (CSV "Moving Time", seconds) by type and by year, plus
+  // grand totals. Aggregates ONLY: no ids, no per-activity records, no dates.
+  // Privacy: no coordinates (T1/T2/T5 n/a), no datetime/schedule (T3 — year is a
+  // 4-digit number, never a date), and no per-activity flag (T4 — an aggregate
+  // count reveals nothing about which activity was excluded, or where/when).
+  const addLeaf = (m: Map<string, Bucket>, key: string, secs: number, cal: number) => {
+    const b = m.get(key) ?? { count: 0, movingTimeSeconds: 0, caloriesKcal: 0 };
+    b.count++; b.movingTimeSeconds += secs; b.caloriesKcal += cal; m.set(key, b);
+  };
+  // byType carries a nested per-year split (byYear inside each type) so the UI can
+  // show, e.g., indoor activity per year without a separate cross-tab artifact.
+  // Calories here come from the CSV Calories column (recon: 100% coverage, all types).
+  const byTypeYear = new Map<string, { count: number; movingTimeSeconds: number; caloriesKcal: number; byYear: Map<string, Bucket> }>();
+  const byYear = new Map<string, Bucket>();
+  const totals: Bucket = { count: 0, movingTimeSeconds: 0, caloriesKcal: 0 };
+  for (const r of data) {
+    const type = (r[iType] ?? "").trim();
+    const parsed = parseDate((r[iDate] ?? "").trim());
+    if (!type || !parsed) continue;
+    const y = String(parsed.year);
+    const mt = iMoving >= 0 ? Number((r[iMoving] ?? "").trim()) : NaN;
+    const secs = Number.isFinite(mt) ? mt : 0;
+    const cv = iCalories >= 0 ? Number((r[iCalories] ?? "").trim()) : NaN;
+    const cal = Number.isFinite(cv) ? cv : 0;
+    let tb = byTypeYear.get(type);
+    if (!tb) { tb = { count: 0, movingTimeSeconds: 0, caloriesKcal: 0, byYear: new Map() }; byTypeYear.set(type, tb); }
+    tb.count++; tb.movingTimeSeconds += secs; tb.caloriesKcal += cal;
+    addLeaf(tb.byYear, y, secs, cal);
+    addLeaf(byYear, y, secs, cal);
+    totals.count++; totals.movingTimeSeconds += secs; totals.caloriesKcal += cal;
+  }
+  const roundBucket = (b: Bucket): Bucket => ({ count: b.count, movingTimeSeconds: Math.round(b.movingTimeSeconds), caloriesKcal: Math.round(b.caloriesKcal) });
+  const strCmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+  const yearCmp = (a: string, b: string) => Number(a) - Number(b);
+  // Stable key order for byte-determinism: types alphabetical (matches the UI sort);
+  // years ascending (JS also serializes integer-like year keys ascending regardless).
+  const sortedLeaves = (m: Map<string, Bucket>): Record<string, Bucket> =>
+    Object.fromEntries([...m.keys()].sort(yearCmp).map((k) => [k, roundBucket(m.get(k)!)]));
+  const byType: Record<string, TypeBucket> = {};
+  for (const t of [...byTypeYear.keys()].sort(strCmp)) {
+    const tb = byTypeYear.get(t)!;
+    byType[t] = { count: tb.count, movingTimeSeconds: Math.round(tb.movingTimeSeconds), caloriesKcal: Math.round(tb.caloriesKcal), byYear: sortedLeaves(tb.byYear) };
+  }
+  const stats: Stats = { totals: roundBucket(totals), byType, byYear: sortedLeaves(byYear) };
+  writeFileSync(join(outDir, "stats.json"), JSON.stringify(stats, null, 2) + "\n");
+
   console.log(`[import] source dir: ${dir}  ->  output: ${outDir}  (clipping: ${zones ? "ON" : "OFF"})`);
   console.log(`[import] activities with a track file: ${withTrack}`);
   console.log(`[import] imported: ${imported}  types: ${JSON.stringify(importedTypes)}`);
@@ -223,6 +305,7 @@ function main(): void {
   console.log(`[import] FIT decode failures: ${failures.length}`);
   if (failures.length) console.log(`[import] failure reasons:\n  ${failures.join("\n  ")}`);
   console.log(`[import] year shards: ${years.join(", ") || "none"}  |  places: ${placeCount}`);
+  console.log(`[import] stats.json: ${totals.count} activities across ${byTypeYear.size} type(s), ${byYear.size} year(s)`);
 }
 
 main();

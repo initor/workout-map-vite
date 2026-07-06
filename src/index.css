@@ -2,3 +2,9 @@
 
 /* Class-based dark mode: the app toggles .dark on <html> to match the map theme. */
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Popups render their own themed card (see cardPopup): make MapLibre's wrapper a
+   transparent, chrome-free container and drop the tip. Scoped with the parent
+   class so these win over maplibre-gl.css regardless of bundle order. */
+.maplibregl-popup .maplibregl-popup-content { padding: 0; background: transparent; box-shadow: none; border-radius: 0; }
+.maplibregl-popup .maplibregl-popup-tip { display: none; }
