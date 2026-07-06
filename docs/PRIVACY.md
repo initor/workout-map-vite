@@ -55,10 +55,25 @@ For each activity, for each zone:
 The jitter does the privacy work; the rounding does the size work; the seed
 preserves byte-determinism (DATA.md).
 
+## Home exposure decision
+
+Home exposure level: neighborhood-precision marker approved by Wayne,
+2026-07-05. Home is publishable at neighborhood precision only; the exact
+coordinates stay protected by the zone clipping above, which is unchanged.
+
+`public/data/places.json` carries a single Home marker at the zone center
+rounded to EXACTLY 2 decimals (~1 km cell). This coexists deliberately with
+the clipping: the 2-decimal marker and the [500,1200) m jitter operate at
+different scales, and the marker (V1-exempt) may sit inside the clip radius by
+design. The marker's ~1 km cell must NOT be tightened to more decimals without
+revisiting the clip range: a finer marker combined with the jitter could
+together narrow the home location.
+
 ## Verifier — validate:data MUST assert all of these
 
-- **V1** No published coordinate lies within 500 m (the minimum clip
-  distance) of any zone center.
+- **V1** No published track coordinate lies within 500 m (the minimum clip
+  distance) of any zone center. (The places.json Home marker is a deliberate
+  exception, see Home exposure decision.)
 - **V2** Endpoint-drop behavior is covered by importer unit tests (it is not
   observable from public data alone).
 - **V3** Public JSON contains no keys outside the DATA.md schemas — catches
