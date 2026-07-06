@@ -39,7 +39,7 @@ interface Summary {
   distanceMeters?: number; movingTimeSeconds?: number; elevationGainMeters?: number;
   caloriesKcal?: number; avgHeartRate?: number; maxHeartRate?: number; stravaUrl: string;
 }
-interface Bucket { count: number; movingTimeSeconds: number; caloriesKcal: number }
+interface Bucket { count: number; movingTimeSeconds: number; caloriesKcal: number; avgHeartRateBpm?: number }
 interface TypeBucket extends Bucket { byYear: Record<string, Bucket> }
 interface Stats { totals: Bucket; byType: Record<string, TypeBucket>; byYear: Record<string, Bucket> }
 type Geometry =
@@ -144,7 +144,7 @@ function main(): void {
   // (seconds) feeds stats.json; "Elevation Gain" (metres) feeds the per-activity
   // elevation. Both are single, unambiguous columns (unlike the duplicated
   // Distance/Elapsed Time/Commute pairs), so indexOf resolves them correctly.
-  const iMoving = col("Moving Time"), iElev = col("Elevation Gain"), iCalories = col("Calories");
+  const iMoving = col("Moving Time"), iElev = col("Elevation Gain"), iCalories = col("Calories"), iAvgHr = col("Average Heart Rate");
   for (const [label, i] of [["Activity ID", iId], ["Activity Date", iDate], ["Activity Name", iName], ["Activity Type", iType], ["Filename", iFile]] as const) {
     if (i < 0) throw new Error(`activities.csv missing required column: ${label}`);
   }
@@ -216,6 +216,7 @@ function main(): void {
 
     const properties: Record<string, string | number> = { id, name, type, date: parsedDate.date, year: parsedDate.year };
     if (distanceMeters != null) properties.distanceMeters = distanceMeters;
+    if (movingTimeSeconds != null) properties.movingTimeSeconds = movingTimeSeconds;
     if (elevationGainMeters != null) properties.elevationGainMeters = elevationGainMeters;
     if (caloriesKcal != null) properties.caloriesKcal = caloriesKcal;
     if (avgHeartRate != null) properties.avgHeartRate = avgHeartRate;
@@ -262,10 +263,15 @@ function main(): void {
   };
   // byType carries a nested per-year split (byYear inside each type) so the UI can
   // show, e.g., indoor activity per year without a separate cross-tab artifact.
-  // Calories here come from the CSV Calories column (recon: 100% coverage, all types).
+  // Calories: CSV Calories column (recon: 100% coverage, all types).
+  // avgHeartRateBpm (totals + byType only): moving-time-weighted mean of the CSV
+  // "Average Heart Rate" over activities that have HR (weight = moving time),
+  // omitted where a bucket has no HR data. Per-type is captured; rendering is BACKLOG.
   const byTypeYear = new Map<string, { count: number; movingTimeSeconds: number; caloriesKcal: number; byYear: Map<string, Bucket> }>();
   const byYear = new Map<string, Bucket>();
   const totals: Bucket = { count: 0, movingTimeSeconds: 0, caloriesKcal: 0 };
+  let hrSum = 0, hrWeight = 0; // [sum(hr*movingTime), sum(movingTime)] over HR-having activities
+  const hrByType = new Map<string, [number, number]>();
   for (const r of data) {
     const type = (r[iType] ?? "").trim();
     const parsed = parseDate((r[iDate] ?? "").trim());
@@ -275,26 +281,40 @@ function main(): void {
     const secs = Number.isFinite(mt) ? mt : 0;
     const cv = iCalories >= 0 ? Number((r[iCalories] ?? "").trim()) : NaN;
     const cal = Number.isFinite(cv) ? cv : 0;
+    const hv = iAvgHr >= 0 ? Number((r[iAvgHr] ?? "").trim()) : NaN;
     let tb = byTypeYear.get(type);
     if (!tb) { tb = { count: 0, movingTimeSeconds: 0, caloriesKcal: 0, byYear: new Map() }; byTypeYear.set(type, tb); }
     tb.count++; tb.movingTimeSeconds += secs; tb.caloriesKcal += cal;
     addLeaf(tb.byYear, y, secs, cal);
     addLeaf(byYear, y, secs, cal);
     totals.count++; totals.movingTimeSeconds += secs; totals.caloriesKcal += cal;
+    if (Number.isFinite(hv) && hv > 0 && secs > 0) {
+      hrSum += hv * secs; hrWeight += secs;
+      const w = hrByType.get(type) ?? [0, 0]; w[0] += hv * secs; w[1] += secs; hrByType.set(type, w);
+    }
   }
-  const roundBucket = (b: Bucket): Bucket => ({ count: b.count, movingTimeSeconds: Math.round(b.movingTimeSeconds), caloriesKcal: Math.round(b.caloriesKcal) });
   const strCmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
   const yearCmp = (a: string, b: string) => Number(a) - Number(b);
+  const roundLeaf = (b: Bucket): Bucket => ({ count: b.count, movingTimeSeconds: Math.round(b.movingTimeSeconds), caloriesKcal: Math.round(b.caloriesKcal) });
+  const weightedHr = (sum: number, weight: number): number | undefined => (weight > 0 ? Math.round(sum / weight) : undefined);
   // Stable key order for byte-determinism: types alphabetical (matches the UI sort);
   // years ascending (JS also serializes integer-like year keys ascending regardless).
   const sortedLeaves = (m: Map<string, Bucket>): Record<string, Bucket> =>
-    Object.fromEntries([...m.keys()].sort(yearCmp).map((k) => [k, roundBucket(m.get(k)!)]));
+    Object.fromEntries([...m.keys()].sort(yearCmp).map((k) => [k, roundLeaf(m.get(k)!)]));
   const byType: Record<string, TypeBucket> = {};
   for (const t of [...byTypeYear.keys()].sort(strCmp)) {
     const tb = byTypeYear.get(t)!;
-    byType[t] = { count: tb.count, movingTimeSeconds: Math.round(tb.movingTimeSeconds), caloriesKcal: Math.round(tb.caloriesKcal), byYear: sortedLeaves(tb.byYear) };
+    const [hs, hw] = hrByType.get(t) ?? [0, 0];
+    const bpm = weightedHr(hs, hw);
+    const o: Record<string, unknown> = { count: tb.count, movingTimeSeconds: Math.round(tb.movingTimeSeconds), caloriesKcal: Math.round(tb.caloriesKcal) };
+    if (bpm != null) o.avgHeartRateBpm = bpm;
+    o.byYear = sortedLeaves(tb.byYear);
+    byType[t] = o as unknown as TypeBucket;
   }
-  const stats: Stats = { totals: roundBucket(totals), byType, byYear: sortedLeaves(byYear) };
+  const totalsOut = roundLeaf(totals);
+  const totalBpm = weightedHr(hrSum, hrWeight);
+  if (totalBpm != null) totalsOut.avgHeartRateBpm = totalBpm;
+  const stats: Stats = { totals: totalsOut, byType, byYear: sortedLeaves(byYear) };
   writeFileSync(join(outDir, "stats.json"), JSON.stringify(stats, null, 2) + "\n");
 
   console.log(`[import] source dir: ${dir}  ->  output: ${outDir}  (clipping: ${zones ? "ON" : "OFF"})`);

@@ -44,7 +44,7 @@ artifact, never flagged (PRIVACY.md T4).
 ## GeoJSON
 
 One Feature per activity.
-`properties` = `{ id, name, type, date, year, distanceMeters?, elevationGainMeters?, caloriesKcal?, avgHeartRate?, maxHeartRate?, stravaUrl? }`.
+`properties` = `{ id, name, type, date, year, distanceMeters?, movingTimeSeconds?, elevationGainMeters?, caloriesKcal?, avgHeartRate?, maxHeartRate?, stravaUrl? }`.
 `geometry` = `LineString`, or `MultiLineString` when privacy clipping splits
 a track. Coordinates `[lng, lat]`, exactly 5 decimal places.
 
@@ -75,7 +75,10 @@ the map. It exists to tell the whole-activity story (indoor + outdoor) that the
 track artifacts, by construction, cannot.
 
 ```ts
-interface Bucket { count: number; movingTimeSeconds: number; caloriesKcal: number }
+interface Bucket {
+  count: number; movingTimeSeconds: number; caloriesKcal: number
+  avgHeartRateBpm?: number             // totals + byType only (not byYear)
+}
 interface Stats {
   totals: Bucket                       // across every activity in activities.csv
   byType: Record<string, Bucket & {    // key = Strava activity type, verbatim
@@ -87,10 +90,12 @@ interface Stats {
 
 `count` is the number of activities; `movingTimeSeconds` is the sum of the CSV
 "Moving Time" column (seconds); `caloriesKcal` is the sum of the CSV "Calories"
-column (kcal; 100% coverage per EXPORT-RECON.md). Each `byType` entry also carries
-a `byYear` split (so the UI can show, e.g., indoor activity per year without a
-separate cross-tab). `byType` keys are sorted alphabetically, all `byYear` keys
-ascending, for byte-determinism.
+column (kcal; 100% coverage per EXPORT-RECON.md). `avgHeartRateBpm` (on `totals`
+and each `byType` entry only, omitted where a bucket has no HR) is the
+moving-time-weighted mean of the CSV "Average Heart Rate" over activities that
+have it. Each `byType` entry also carries a `byYear` split (so the UI can show,
+e.g., indoor activity per year without a separate cross-tab). `byType` keys are
+sorted alphabetically, all `byYear` keys ascending, for byte-determinism.
 
 Aggregates ONLY — deliberately no ids, no per-activity records, and no dates.
 This is what keeps it privacy-safe (PRIVACY.md): no coordinates (T1/T2/T5), no

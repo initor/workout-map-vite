@@ -46,18 +46,28 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 // type is a GPS type whose row toggles tracks.
 const INDOOR_TYPES = new Set(['Workout', 'Crossfit'])
 
-interface Bucket { count: number; movingTimeSeconds: number; caloriesKcal: number }
+interface Bucket { count: number; movingTimeSeconds: number; caloriesKcal: number; avgHeartRateBpm?: number }
 interface TypeBucket extends Bucket { byYear: Record<string, Bucket> }
 interface Stats { totals: Bucket; byType: Record<string, TypeBucket>; byYear: Record<string, Bucket> }
 interface ActivitySummary { type: string; year: number }
 interface Place { name: string; kind: string; lat: number; lng: number }
-interface TrackProps { name?: string; type?: string; date?: string; distanceMeters?: number; elevationGainMeters?: number; caloriesKcal?: number; avgHeartRate?: number; maxHeartRate?: number; stravaUrl?: string }
+interface TrackProps { name?: string; type?: string; date?: string; distanceMeters?: number; movingTimeSeconds?: number; elevationGainMeters?: number; caloriesKcal?: number; avgHeartRate?: number; maxHeartRate?: number; stravaUrl?: string }
 
 const X_ICON = '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke-linecap="round"/></svg>'
 const HOME_GLYPH = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 7.5L8 3l5.5 4.5M4 6.5V13h8V6.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+// Metric glyphs (clock, route, mountain, flame, heart) + external-link. Small,
+// stroke=currentColor so they inherit the muted label colour. No icon dependency.
+const gsvg = (body: string): string => `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
+const GLYPH_CLOCK = gsvg('<circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/>')
+const GLYPH_ROUTE = gsvg('<circle cx="4" cy="12.5" r="1.4"/><circle cx="12" cy="3.5" r="1.4"/><path d="M4 11.1V8a2.5 2.5 0 012.5-2.5h3A2.5 2.5 0 0012 3"/>')
+const GLYPH_MOUNTAIN = gsvg('<path d="M2 13l3.6-6.2 2.4 3.3L10.8 5 14 13z"/>')
+const GLYPH_FLAME = gsvg('<path d="M8.2 2.2c.4 2-1.7 2.7-1.7 4.6 0 .9.6 1.6 1.5 1.6M8 14a4 4 0 01-4-4c0-2.4 1.8-3.4 2.1-5.3.7 1.1 4.9 2.2 4.9 5.6A4 4 0 018 14z"/>')
+const GLYPH_HEART = gsvg('<path d="M8 13.2S2.6 9.4 2.6 5.9A2.6 2.6 0 018 5.1a2.6 2.6 0 015.4.8c0 3.5-5.4 7.3-5.4 7.3z"/>')
+const EXT_LINK = '<svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3.5h5v5M10 4L5.5 8.5"/><path d="M8.5 8.5V10a1 1 0 01-1 1H4a1 1 0 01-1-1V6.5a1 1 0 011-1h1.5"/></svg>'
 
 function initialTheme(): Theme {
-  return localStorage.getItem('theme') === 'light' ? 'light' : 'dark'
+  // Light is the default for a first-time visitor; a saved choice always wins.
+  return localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'
 }
 
 function escapeHtml(s: string): string {
@@ -76,21 +86,29 @@ function formatDate(iso: string): string {
   return name ? `${name} ${Number(d)}, ${y}` : iso
 }
 
+// Panel/totals duration: one unit. >=1 h -> "89 h" / "1.5 h"; <1 h -> "40 m".
 function formatDuration(secs: number): string {
-  if (secs < 3600) return `${Math.round(secs / 60)} min`
+  if (secs < 3600) return `${Math.round(secs / 60)} m`
   const h = secs / 3600
   return h >= 10 ? `${Math.round(h)} h` : `${h.toFixed(1)} h`
+}
+
+// Popup moving time: hours + minutes, e.g. "2 h 58 m" (or "40 m" under an hour).
+function formatHm(secs: number): string {
+  const m = Math.round(secs / 60)
+  const h = Math.floor(m / 60)
+  return h > 0 ? `${h} h ${m % 60} m` : `${m} m`
 }
 
 const formatKcal = (n: number): string => `${Math.round(n).toLocaleString()} kcal`
 
 // One popup design: closeButton:false + our own themed card (panel tokens,
 // theme-aware, custom close). Closes on map click (closeOnClick) and Esc.
-function cardPopup(content: string, offset: number): maplibregl.Popup {
+function cardPopup(content: string, offset: number, maxWidth = 260): maplibregl.Popup {
   const card = document.createElement('div')
   card.className = 'relative rounded-lg bg-white/95 p-4 pr-9 text-zinc-900 shadow-lg ring-1 ring-black/5 backdrop-blur dark:bg-zinc-900/95 dark:text-zinc-100 dark:ring-white/10'
   card.innerHTML = `<button type="button" aria-label="Close" class="absolute right-2.5 top-2.5 rounded p-0.5 text-zinc-400 transition-colors hover:text-zinc-700 dark:hover:text-zinc-200">${X_ICON}</button>${content}`
-  const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: true, maxWidth: '260px', offset })
+  const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: true, maxWidth: `${maxWidth}px`, offset })
   popup.setDOMContent(card)
   card.querySelector('button')?.addEventListener('click', () => popup.remove())
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') popup.remove() }
@@ -99,22 +117,39 @@ function cardPopup(content: string, offset: number): maplibregl.Popup {
   return popup
 }
 
-// Track popup content. Missing fields degrade away. Strava link is the brand orange.
-function trackPopupContent(p: TrackProps): string {
-  const rows = [`<div class="text-sm font-semibold">${escapeHtml(p.name || 'Activity')}</div>`]
-  if (p.date && p.type) rows.push(`<div class="text-xs text-zinc-500 dark:text-zinc-400">${escapeHtml(formatDate(p.date))} &middot; ${escapeHtml(p.type)}</div>`)
-  const stat = (s: string) => rows.push(`<div class="text-xs">${s}</div>`)
-  if (typeof p.distanceMeters === 'number') stat(`${(p.distanceMeters / 1000).toFixed(1)} km`)
-  if (typeof p.elevationGainMeters === 'number') stat(`${Math.round(p.elevationGainMeters)} m elevation`)
-  if (typeof p.caloriesKcal === 'number') stat(formatKcal(p.caloriesKcal))
+// Activity popup: header (name + meta) then a 2-column metric grid. Each metric
+// renders only when present; the grid reflows (no per-type layouts). Value in the
+// card's default colour at weight 500 + tabular-nums; label/unit muted. Card chrome
+// (radius, close, theme-awareness) comes from cardPopup.
+function trackPopupContent(p: TrackProps, theme: Theme): string {
+  const muted = 'text-zinc-500 dark:text-zinc-400'
+  const header = `<div class="text-[15px] font-medium leading-snug">${escapeHtml(p.name || 'Activity')}</div>`
+  const metaBits: string[] = []
+  if (p.date) metaBits.push(`<span>${escapeHtml(formatDate(p.date))}</span>`)
+  if (p.type) metaBits.push(`<span class="inline-block h-2 w-2 shrink-0 rounded-full" style="background:${typeColor(theme, p.type)}"></span><span>${escapeHtml(p.type)}</span>`)
+  const meta = metaBits.length ? `<div class="mt-1 flex items-center gap-1.5 text-xs ${muted}">${metaBits.join('<span class="opacity-60">&middot;</span>')}</div>` : ''
+
+  const cells: string[] = []
+  const cell = (glyph: string, label: string, value: string, unit?: string, sub?: string) => cells.push(
+    `<div><div class="flex items-center gap-1.5 ${muted}">${glyph}<span class="text-[11px] font-medium uppercase tracking-wider">${label}</span></div>` +
+    `<div class="mt-1 flex items-baseline gap-1"><span class="text-[19px] font-medium leading-none tabular-nums">${value}</span>${unit ? `<span class="text-xs ${muted}">${unit}</span>` : ''}</div>` +
+    `${sub ? `<div class="mt-1 text-xs tabular-nums ${muted}">${sub}</div>` : ''}</div>`,
+  )
+  if (typeof p.movingTimeSeconds === 'number') cell(GLYPH_CLOCK, 'Moving time', formatHm(p.movingTimeSeconds))
+  if (typeof p.distanceMeters === 'number') cell(GLYPH_ROUTE, 'Distance', (p.distanceMeters / 1000).toFixed(1), 'km')
+  if (typeof p.elevationGainMeters === 'number') cell(GLYPH_MOUNTAIN, 'Elevation', String(Math.round(p.elevationGainMeters)), 'm')
+  if (typeof p.caloriesKcal === 'number') cell(GLYPH_FLAME, 'Calories', Math.round(p.caloriesKcal).toLocaleString(), 'kcal')
   if (typeof p.avgHeartRate === 'number' || typeof p.maxHeartRate === 'number') {
-    const parts: string[] = []
-    if (typeof p.avgHeartRate === 'number') parts.push(`${p.avgHeartRate} avg`)
-    if (typeof p.maxHeartRate === 'number') parts.push(`${p.maxHeartRate} max`)
-    stat(`${parts.join(' &middot; ')} bpm`)
+    const hasAvg = typeof p.avgHeartRate === 'number'
+    cell(GLYPH_HEART, 'Heart rate', String(hasAvg ? p.avgHeartRate : p.maxHeartRate), hasAvg ? 'bpm avg' : 'bpm max',
+      hasAvg && typeof p.maxHeartRate === 'number' ? `${p.maxHeartRate} max` : undefined)
   }
-  if (p.stravaUrl) rows.push(`<a class="text-xs font-medium hover:underline" style="color:${STRAVA_ORANGE}" href="${escapeHtml(p.stravaUrl)}" target="_blank" rel="noopener noreferrer">Open on Strava</a>`)
-  return `<div class="space-y-0.5">${rows.join('')}</div>`
+  const grid = cells.length ? `<div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">${cells.join('')}</div>` : ''
+
+  const footer = p.stravaUrl
+    ? `<div class="mt-3 border-t border-zinc-200 pt-2.5 dark:border-zinc-700"><a class="inline-flex items-center gap-1 text-xs font-medium hover:underline" style="color:${STRAVA_ORANGE}" href="${escapeHtml(p.stravaUrl)}" target="_blank" rel="noopener noreferrer">Open on Strava ${EXT_LINK}</a></div>`
+    : ''
+  return `<div>${header}${meta}${grid}${footer}</div>`
 }
 
 function buildTypeFilter(types: string[]): maplibregl.FilterSpecification {
@@ -274,7 +309,7 @@ export default function App() {
     map.on('click', 'tracks-hit', (e) => {
       const f = e.features?.[0]
       if (!f) return
-      cardPopup(trackPopupContent(f.properties as TrackProps), 8).setLngLat(e.lngLat).addTo(map)
+      cardPopup(trackPopupContent(f.properties as TrackProps, view.current.theme), 8, 320).setLngLat(e.lngLat).addTo(map)
     })
 
     void (async () => {
@@ -401,8 +436,15 @@ export default function App() {
             {phase === 'ready' && stats && (
               <>
                 <div>
-                  <div className="text-sm font-semibold">Totals: {stats.totals.count} activities</div>
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400">{formatDuration(stats.totals.movingTimeSeconds)} moving &middot; {formatKcal(stats.totals.caloriesKcal)} &middot; incl. indoor</div>
+                  <div className="text-[19px] font-medium leading-tight">{stats.totals.count} activities</div>
+                  <div className="mt-1 text-xs tabular-nums text-zinc-600 dark:text-zinc-300">
+                    {[
+                      `${formatDuration(stats.totals.movingTimeSeconds)} moving`,
+                      formatKcal(stats.totals.caloriesKcal),
+                      stats.totals.avgHeartRateBpm != null ? `${stats.totals.avgHeartRateBpm} bpm avg` : null,
+                    ].filter(Boolean).join(' \u00B7 ')}
+                  </div>
+                  <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Includes indoor workouts</div>
                 </div>
                 <div className="flex flex-col">
                   {typeRows.map(([t, b]) => {
@@ -414,12 +456,13 @@ export default function App() {
                         role="button" tabIndex={0} aria-pressed={active}
                         onClick={toggleRow}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRow() } }}
-                        className={`-mx-2 flex cursor-pointer items-center justify-between gap-4 rounded-lg px-2 py-1 text-xs transition hover:bg-zinc-500/10 ${active ? 'opacity-100' : 'opacity-40'}`}>
-                        <span className="flex items-center gap-2">
-                          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: typeColor(theme, t) }} />
+                        className={`-mx-2 grid cursor-pointer grid-cols-[1fr_2.5rem_3.25rem] items-center gap-x-2 rounded-lg px-2 py-1 text-sm transition hover:bg-zinc-500/10 ${active ? 'opacity-100' : 'opacity-40'}`}>
+                        <span className="flex items-center gap-2 truncate">
+                          <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: typeColor(theme, t) }} />
                           {t}
                         </span>
-                        <span className="tabular-nums text-zinc-500 dark:text-zinc-400">{b.count}<span className="ml-2">{formatDuration(b.movingTimeSeconds)}</span></span>
+                        <span className="text-right font-medium tabular-nums">{`${b.count}\u00D7`}</span>
+                        <span className="text-right tabular-nums text-zinc-500 dark:text-zinc-400">{formatDuration(b.movingTimeSeconds)}</span>
                       </div>
                     )
                   })}

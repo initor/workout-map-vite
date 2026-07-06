@@ -127,14 +127,23 @@ Work:
 - Importer (one rerun): added `elevationGainMeters` (CSV Elevation Gain),
   `caloriesKcal` (FIT session total_calories, else CSV Calories), and
   `avgHeartRate`/`maxHeartRate` (FIT session, Ride-scoped — see EXPORT-RECON.md
-  recon) to ActivitySummary + GeoJSON properties. New `public/data/stats.json`
-  aggregates the FULL `activities.csv` — count + moving time + calories by type
-  and by year (each type also split by year), INCLUDING indoor activities.
-  Regenerated `public/data/`; track geometry stayed byte-identical to the
-  committed shards (properties-only diff). validate:data extended: new fields in
-  the V3 allowlist; stats.json carries no date-shaped string and no key outside
+  recon) to ActivitySummary + GeoJSON properties (`movingTimeSeconds` also carried
+  into GeoJSON properties for the popup). New `public/data/stats.json` aggregates
+  the FULL `activities.csv` — count + moving time + calories by type and by year
+  (each type also split by year), plus `avgHeartRateBpm` (moving-time-weighted
+  mean of the CSV Average Heart Rate) on totals + per type, INCLUDING indoor
+  activities. Regenerated `public/data/`; track geometry stayed byte-identical to
+  the committed shards (properties-only diff). validate:data extended: new fields
+  in the V3 allowlist; stats.json carries no date-shaped string and no key outside
   its schema.
-- UI (final pass — color encodes activity type; one control surface):
+- Design pass (per Wayne's approved mockups in `docs/mocks/`): the activity popup
+  is a 2-column metric grid (glyph + label over a tabular value; moving time /
+  distance / elevation / calories / heart rate, each shown only when present); the
+  stats panel is a typographic redesign (headline + summary strip incl. bpm avg +
+  caption; a 3-column `dot+name | count× | duration` grid). Two weights, tabular
+  figures, color reserved for type. Light theme is the default for a first-time
+  visitor (a saved choice still wins).
+- UI (color encodes activity type; one control surface):
   - Per-type theme-aware color tokens (Ride orange, Hike violet, Walk teal,
     Workout rose, Crossfit amber), defined once and used consistently in tracks,
     legend dots, hover highlight, and the Home disc. Opacity accumulation encodes
