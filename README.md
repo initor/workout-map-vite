@@ -1,161 +1,111 @@
-# Wayne's Activity Map
+# Workout Map
 
-Static, single-page activity map: sanitized GPS tracks derived from Strava bulk
-exports, rendered on an interactive MapLibre map. Live at
-**https://map.waynewen.com** (Vercel, push-to-`main` CD).
+Wayne's personal activity map: sanitized GPS tracks from Strava, rendered as
+an interactive heat-style map. Live at **[map.waynewen.com](https://map.waynewen.com)**.
 
-The browser never talks to Strava. Everything it loads is a pre-generated,
-privacy-sanitized artifact under `public/data/`. All location privacy comes from
-the importer's clipping algorithm, not from anything at runtime.
+Static site, no backend: every byte the browser loads is a pre-generated
+artifact committed to this repo. Data freshness is a property of the
+pipeline, not the page.
 
-## Stack
+## The data model in one paragraph
 
-- **Bun** — package manager and script runner. Run TS scripts directly:
-  `bun scripts/foo.ts` (no tsx / ts-node).
-- Vite 8 + React 19 + TypeScript, Tailwind CSS v4, MapLibre GL JS.
-- Lint: oxlint.
+Strava data comes in three tiers: the **bulk export** (a ZIP of my complete
+history, which is my own data with no API terms attached), the **API** (incremental
+deltas, OAuth, server-side only), and **webhooks** (real-time push). v1 runs
+entirely on tier 1: I download an export, a local importer turns it into
+sanitized static JSON, and Vercel serves it. Tier 2 is designed but
+deliberately deferred (see Roadmap); tier 3 will likely never be needed. The
+browser never talks to Strava: no tokens, no CORS, no rate limits, no
+policy surface.
 
-## Everyday commands
+## Pipeline
 
-| Command | What it does |
-| --- | --- |
-| `bun run dev` | dev server |
-| `bun run build` | `tsc -b && vite build` — must pass before every commit |
-| `bun run lint` | oxlint |
-| `bun run import:strava -- --dir <dir>` | regenerate `public/data/` from a raw export |
-| `bun run validate:data [-- <dir>]` | schema + PRIVACY.md verifier (defaults to `public/data`) |
-| `bun run check:geometry` | did any track geometry change vs the committed shards? |
-| `bun run test` | importer/clip unit tests |
-
-## Docs
-
-- `docs/PLAN.md` — milestones + exit criteria (the work queue).
-- `docs/DATA.md` — public artifact schemas + determinism rules.
-- `docs/PRIVACY.md` — threat model + hard invariants (**read before touching
-  `scripts/` or `public/data/`**).
-- `docs/BACKLOG.md` — post-v1 polish ideas (not scheduled work).
-
----
-
-# Data-update runbook
-
-This is the whole loop for refreshing the map with a new Strava export. A future
-session should need nothing but this section. It is safe to repeat: the importer
-is deterministic, so re-running on identical input rewrites byte-identical files.
-
-### Prerequisites (one-time)
-
-- **Bun** installed, repo cloned, `bun install` run.
-- **`data/private/privacy-zones.json`** present. This gitignored file is the
-  secret that powers all clipping; without it the importer refuses to write to
-  `public/data/`. Shape (see `docs/PRIVACY.md`):
-
-  ```json
-  { "seedSalt": "<high-entropy random string>",
-    "zones": [ { "name": "home", "lat": <num>, "lng": <num> } ] }
-  ```
-
-  Keep the **same `seedSalt`** across updates. The salt makes the privacy jitter
-  reproducible; changing it re-jitters every track and produces an unreviewable
-  full-file diff (and `check:geometry` will flag every track as changed).
-
-### Step 1 — Get the export
-
-Request a bulk export from Strava (Settings -> My Account -> Download or Delete
-Your Account -> Request Your Archive). Strava emails a `.zip` within a few hours.
-
-### Step 2 — Place it in `data/raw/`
-
-Unzip so that `data/raw/activities.csv` and `data/raw/activities/` exist:
-
-```
-data/raw/
-  activities.csv          # metadata; the Filename column keys each row to a track
-  activities/             # .fit.gz / .gpx / .tcx.gz track files
+```mermaid
+flowchart LR
+    A["Strava bulk export<br/>(manual download)"] --> B["data/raw/<br/>(gitignored)"]
+    B --> C["importer<br/>bun scripts/"]
+    Z["data/private/privacy-zones.json<br/>(gitignored: zones + salt)"] -.-> C
+    C --> D["public/data/<br/>activities.json · tracks-YYYY.geojson<br/>stats.json · places.json"]
+    D --> V{"validate:data<br/>V1-V7"}
+    V -->|green| E["commit / PR"]
+    E --> F["Vercel CD"]
+    F --> G["map.waynewen.com<br/>Vite + React + MapLibre"]
 ```
 
-`data/raw/` is gitignored and must **stay** so. The importer reads ONLY
-`activities.csv` and `activities/` and ignores the rest of the archive
-(messages, profile, etc.). Never copy anything else, even into `data/`.
+| Artifact | Contents |
+|---|---|
+| `activities.json` | One summary per outdoor GPS activity: name, type, date (day precision), distance, elevation, calories/heart rate where present |
+| `tracks-<year>.geojson` | Clipped LineStrings, one feature per activity, 5-decimal coordinates |
+| `stats.json` | Aggregates over **all** activities including indoor: counts, moving time, calories by type and year. Aggregates only; no per-activity records |
+| `places.json` | Home at neighborhood precision (2-decimal grid), backing the home marker and indoor stats |
 
-### Step 3 — Import
+## Privacy model
 
-```
-bun run import:strava -- --dir data/raw
-```
+Raw exports and zone config never leave my machine (`data/` is gitignored).
+Before anything reaches `public/data/`:
 
-Writes `activities.json`, `tracks-<year>.geojson`, `places.json`, and
-`stats.json` into `public/data/`. It prints a summary (imported count by type,
-drops, MultiLineString splits, stats totals). Zone coordinates are never logged.
+- Points near configured private zones are removed at a **per-activity
+  randomized radius** (500-1200 m), seeded by a secret salt, deterministic
+  across runs, not computable from public data
+- The first and last 5 points of every track are dropped unconditionally
+- Dates only, never times; excluded activities are absent, not flagged
+- `bun run validate:data` enforces all of this mechanically (assertions
+  V1-V7) and gates every data commit
 
-### Step 4 — Validate (must be green)
+Home is shown deliberately, at ~1 km grid precision, a recorded decision,
+not a leak. Full threat model: [docs/PRIVACY.md](docs/PRIVACY.md).
 
-```
-bun run validate:data
-```
+## Updating the data
 
-Asserts the DATA.md schemas and the PRIVACY.md verifier V1-V7 (no track point
-within 500 m of a zone, date-only, <=5-decimal coords, id-set consistency, no
-raw files under `public/`, ...) plus the stats.json checks (no date-shaped
-strings, no keys outside the schema). If it fails, **stop and fix** — do not
-commit red data. `public/data/` changes land only with a green run (PRIVACY R2).
+```bash
+# 1. Request a fresh export: Strava → Settings → My Account → Download Your Archive
+# 2. Unzip into data/raw/   (only activities.csv and activities/ are read)
 
-### Step 5 — Did the track geometry change?
+bun run import:strava        # parse → clip → write public/data/
+bun run validate:data        # must be green
+bun run dev                  # eyeball locally
 
-```
-bun run check:geometry
-```
-
-This compares the regenerated `tracks-*.geojson` **geometry** against the
-committed shards, ignoring properties:
-
-- **"NO track geometry changed"** — only properties/stats moved (e.g. this run
-  only refreshed totals or added an elevation field). No new location surface,
-  so **Step 6 (inspection) is optional**. Skip to Step 7.
-- **"TRACK GEOMETRY CHANGED"** — new tracks, removed tracks, or changed
-  coordinates (the normal case when you add activities). **Do Step 6 before
-  committing.**
-
-  > If it reports geometry changed for an activity you did *not* expect to change
-  > (e.g. an old ride you didn't re-record), suspect a `seedSalt` change or an
-  > importer/algorithm edit — investigate before trusting the output.
-
-### Step 6 — Wayne's privacy inspection (only if geometry changed)
-
-Run the map locally against the new data and walk the `docs/PRIVACY.md`
-inspection checklist:
-
-```
-bun run build && bun run preview      # then open the printed localhost URL
+git add public/data && git commit -m "data: update activities" && git push
+# Vercel deploys automatically
 ```
 
-- [ ] Zoom to each zone: no line enters the clip area; track termini scatter at
-      varied distances — no clean circle (that would be threat T2).
-- [ ] Skim ~3 random activities end to end for anything odd.
-- [ ] Search the artifacts for any coordinate with 6+ decimals: there should be
-      none (`bun run validate:data` also enforces this).
-- [ ] `git status` shows nothing from `data/raw|private|intermediate`.
+If regeneration changes track geometry (not just properties or new
+activities), stop and re-run the inspection checklist in
+[docs/PRIVACY.md](docs/PRIVACY.md) before pushing.
 
-### Step 7 — Commit and deploy
+## Development
 
-```
-git checkout -b wayne/data-update-<yyyy-mm-dd>   # never commit data on main
-git add public/data
-git status                                        # confirm ONLY public/data/ is staged
-git commit -m "chore(data): refresh from Strava export <yyyy-mm-dd>"
-git push -u origin HEAD                            # open a PR, or push main if you prefer
+```bash
+bun install
+bun run dev          # local dev server
+bun run build        # tsc + vite build: must pass before commit
+bun run lint
 ```
 
-Merging to `main` triggers Vercel CD; the site redeploys automatically. Keep the
-diff reviewable: per-year sharding means a typical update only rewrites the
-current-year shard plus `stats.json`.
+Stack: Vite + React 19 + TypeScript · Tailwind CSS v4 · MapLibre GL JS ·
+OpenFreeMap basemaps · Bun · Vercel.
 
-### Privacy stop-signs (hard rules)
+Docs: [docs/PLAN.md](docs/PLAN.md) (milestones + exit criteria) ·
+[docs/DATA.md](docs/DATA.md) (schemas, determinism) ·
+[docs/PRIVACY.md](docs/PRIVACY.md) (threat model). Coding agents read
+[AGENTS.md](AGENTS.md) first.
 
-- Never commit anything under `data/raw/`, `data/private/`,
-  `data/intermediate/`, or any `*.gpx` / `*.tcx` / `*.fit` / `*.zip` (incl.
-  `.gz`). `.gitignore` guards this; don't defeat it.
-- Never print, copy, or embed coordinates from `privacy-zones.json` anywhere.
-- Never hand-edit generated artifacts in `public/data/` (fixtures excepted).
-  The importer is the only writer; changes land only with a green
-  `validate:data`.
+## Roadmap: near-real-time sync (designed, not built)
+
+Manual updates are fine until they aren't. When they get annoying, tier 2
+activates, server-side only:
+
+```mermaid
+flowchart LR
+    S["GitHub Actions cron<br/>(every 6-12 h)"] --> T["Strava API<br/>refresh-token flow"]
+    T --> U["fetch delta<br/>since last sync"]
+    U --> C["same importer<br/>+ validator"]
+    C --> P["automated PR"]
+    P --> M["review + merge"]
+    M --> F["Vercel deploy"]
+```
+
+Same pipeline, same validator, same privacy gates: the only new pieces are
+the cron trigger and token handling (GitHub Actions secrets; the browser
+still never sees Strava). Gated on re-reading the then-current Strava API
+agreement: see M6 in [docs/PLAN.md](docs/PLAN.md).
