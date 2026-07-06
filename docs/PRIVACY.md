@@ -3,6 +3,10 @@
 Public artifacts can reveal where Wayne lives and works, and when he is away,
 unless constrained. These rules are hard. When in doubt, publish less.
 
+Every exported activity is treated as publishable: there is no per-activity
+visibility filter. Privacy comes entirely from the zone clipping below; an
+activity dropped for lack of GPS is simply absent (T4), never flagged.
+
 ## Threats
 
 - **T1 Endpoint inference** — tracks that start/end at home reveal home.
@@ -78,8 +82,9 @@ activity id and the violating distance only, never the zone location.
   be loud, never silently permissive.
 - **R2** Changes to `public/data/` land only together with a green
   `validate:data` run.
-- **R3** Raw export handling: unzip only into `data/raw/` (gitignored); read
-  only `activities.csv` and `activities/`.
+- **R3** Raw export handling: raw exports live only under `data/raw/`
+  (gitignored, however they arrive); read only `activities.csv` and
+  `activities/`.
 
 ## Inspection checklist (Wayne, at M3, before the first publish)
 

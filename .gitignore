@@ -26,3 +26,11 @@ dist-ssr
 # Private Strava data (never commit); interim guard, M2 formalizes per docs/PLAN.md.
 # Anchored to repo root so public/data/ (committed artifacts + fixtures) stays tracked.
 /data/
+
+# Raw track files: defense-in-depth beyond /data/ (never commit GPS anywhere).
+*.gpx
+*.tcx
+*.fit
+*.fit.gz
+*.tcx.gz
+*.zip

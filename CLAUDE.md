@@ -21,7 +21,7 @@ Vercel at https://map.waynewen.com via push-to-main CD (already verified, M0).
 - `bun run build` — `tsc -b && vite build`; must pass before every commit
 - `bun run lint`
 - Data scripts (exist from M2 on):
-  - `bun run import:strava -- --zip <path>`
+  - `bun run import:strava -- --dir <dir>`
   - `bun run validate:data [-- <dir>]`
 
 ## Repository layout

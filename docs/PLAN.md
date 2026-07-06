@@ -41,7 +41,7 @@ Exit:
 
 ---
 
-## M2 — Importer v0 against the real export (staging only)  [BLOCKED: needs archive zip from Wayne]
+## M2 — Importer v0 against the real export (staging only)  [DONE 2026-07-05]
 
 Question: can Wayne's actual Strava archive be turned into artifacts matching
 `docs/DATA.md`, deterministically?
@@ -49,10 +49,11 @@ Question: can Wayne's actual Strava archive be turned into artifacts matching
 Work:
 - Extend `.gitignore`: `data/raw/`, `data/private/`, `data/intermediate/`,
   `*.gpx`, `*.tcx`, `*.fit`, `*.fit.gz`, `*.tcx.gz`, `*.zip`.
-- `scripts/import-strava.ts` (`bun run import:strava -- --zip <path>`):
-  unzip into `data/raw/` → read `activities.csv` (gotchas in DATA.md
-  §export-format) → decompress `.gz` → parse GPX/TCX (fast-xml-parser) and
-  FIT (@garmin/fitsdk) → normalize → apply include list → write artifacts to
+- `scripts/import-strava.ts` (`bun run import:strava -- --dir <dir>`):
+  read `activities.csv` and the FIT tracks it references from `data/raw/`
+  (gotchas in DATA.md's export-format section), decompress `.fit.gz`, parse
+  FIT (@garmin/fitsdk; the export is 100% FIT, so GPX/TCX are deferred),
+  keep every activity with a usable GPS track, and write artifacts to
   `data/intermediate/staging/` (NOT `public/`).
 - `scripts/validate-data.ts` (`bun run validate:data -- <dir>`): at this
   stage, schema + determinism checks from DATA.md; PRIVACY.md assertions are
@@ -61,12 +62,12 @@ Work:
   language, count and reasons for unparseable files, chosen parser plan.
 
 Exit:
-- [ ] Importer runs clean on the real zip; parse-failure rate recorded in
+- [x] Importer runs clean on the real zip; parse-failure rate recorded in
       EXPORT-RECON.md
-- [ ] Determinism: two consecutive runs → `diff -r` of the two staging
+- [x] Determinism: two consecutive runs → `diff -r` of the two staging
       outputs is empty
-- [ ] `bun run validate:data -- data/intermediate/staging` green
-- [ ] `git status` shows nothing raw staged; nothing under `public/data/`
+- [x] `bun run validate:data -- data/intermediate/staging` green
+- [x] `git status` shows nothing raw staged; nothing under `public/data/`
       changed
 
 ---
