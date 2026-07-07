@@ -57,6 +57,14 @@ without Wayne's explicit pick** — it is a parking lot, not a queue.
   ever produced a track") would generalize it.
 - **Map has no keyboard/AX affordance for tracks.** Legend rows are keyboard-
   toggleable, but tracks and the Home marker popup are reachable only by click.
+- **Searchable activity index panel.** A searchable list to locate a specific or
+  low-frequency activity on the map (e.g. the lone Walk, one particular ride) and
+  frame/highlight it. Complements the "frame visible" control, which frames the
+  whole visible set rather than a single activity.
+- **No social-share image (`og:image`).** `index.html` sets `og:title`/
+  `og:description` but no `og:image`, so link unfurls (Slack, iMessage, X) render
+  no preview card. Add a static share image under `public/` (e.g. a themed map
+  snapshot) plus `og:image` (and `twitter:card`) when wanted.
 
 ## Testing
 
