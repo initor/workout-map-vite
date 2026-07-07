@@ -41,7 +41,9 @@ entirely from this gitignored salt.
 For each activity, for each zone:
 
 1. `clipDistance = 500 + 700 * u`, where
-   `u = uniform01(seed = sha256(seedSalt + ":" + activityId + ":" + zone.name))`.
+   `u = uniform01(seed = sha256(seedSalt + ":" + startEpochSeconds + ":" + zone.name))`
+   and `startEpochSeconds` is the activity's start time as UTC epoch seconds,
+   taken from the source recording (the first GPS sample's timestamp).
    Deterministic per (activity, zone); unpredictable across activities;
    range [500, 1200) meters.
 2. Remove every point within `clipDistance` of the zone center (haversine).
@@ -54,6 +56,20 @@ For each activity, for each zone:
 
 The jitter does the privacy work; the rounding does the size work; the seed
 preserves byte-determinism (DATA.md).
+
+### Seed basis: start time, not activity id (M7, 2026-07-06)
+
+The seed keys on the activity's start time rather than the Strava activity id.
+The id coupled clip geometry to one platform's identifier scheme; the start time
+is intrinsic to the ride and identical across a Strava export, the same ride
+from Hammerhead, and the same ride from Ride with GPS. Keying the jitter on it
+makes a future source migration geometry-invariant and independently verifiable,
+and re-deriving a ride's clip needs only the salt plus a value every export
+already carries.
+
+`startEpochSeconds` is a SEED INPUT ONLY. It must never appear in any public
+artifact: published dates stay day-precision (T3), and no epoch- or
+datetime-shaped value may leak through any field. validate:data asserts this (V8).
 
 ## Home exposure decision
 
@@ -84,6 +100,10 @@ together narrow the home location.
   under `public/`.
 - **V7** The id set of `activities.json` equals the union of ids across
   `tracks-*.geojson` — no orphans in either direction.
+- **V8** No numeric value in any public artifact is epoch-like (magnitude
+  >= 1e9). The clip seed derives from the activity start time (epoch seconds);
+  this catches that value — or any timestamp — leaking into output (T3).
+  Activity ids and Strava URLs are strings, so they are unaffected.
 
 V1 requires reading `data/private/privacy-zones.json` locally. The validator
 never embeds or prints zone coordinates (T5): failures report the offending

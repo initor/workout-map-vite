@@ -184,14 +184,73 @@ Exit:
 
 ---
 
-## M6 — Gate: Strava API sync  [v2 — do not start unprompted]
+## M6 — Gate: Strava API sync  [SUPERSEDED 2026-07-06 — see M7-M9]
 
-This is a decision point, not a task. Open only if manual updates become
-annoying in practice.
+This is a decision point, not a task. It was a "revisit when manual updates get
+annoying" gate; that revisit happened 2026-07-06.
 
-Preconditions before any implementation:
+Reviewed 2026-07-06 (outcome — SUPERSEDED): the Strava API agreement remains
+non-compliant for public display of derived data, so the Strava-API path below
+stays closed. The same review cleared two alternatives — the Hammerhead API
+License (2025-05-22) and the Ride with GPS API (site ToS only) — which carry no
+display restrictions, retention mirrors, or AI clauses. Automated sync therefore
+migrates OFF Strava, along a new track: M7 seed decoupling -> M8 source recon +
+local sync -> M9 CI automation. The original Strava-cron design below is retained
+for historical context only.
+
+Preconditions (Strava path — retained for history):
 - Re-read the then-current Strava API agreement; confirm displaying derived
   data on a public personal site complies.
 - Server-side only: GitHub Actions cron → refresh-token flow → fetch delta →
   run the SAME import + validate pipeline → open a PR. Tokens live only in
   Actions secrets. The browser never talks to Strava.
+
+---
+
+## M7 — Privacy seed decoupling  [DONE 2026-07-06]
+
+Question: can clip geometry be made source-agnostic, so a later migration off
+Strava is geometry-invariant?
+
+Work:
+- Clip seed keys on the activity start time (UTC epoch seconds, from the source
+  recording's first GPS sample) instead of the Strava activity id:
+  `u = uniform01(sha256(seedSalt + ":" + startEpochSeconds + ":" + zone.name))`.
+  See PRIVACY.md §algorithm and its "Seed basis" note for the rationale.
+- `startEpochSeconds` is a seed input ONLY; it never enters any artifact.
+  validate:data gains V8 (no epoch-like numeric value in public output).
+- PRIVACY.md §algorithm + DATA.md determinism updated in the same PR.
+- Regenerate `public/data/` locally. This re-jitters every track once — the one
+  sanctioned exception to byte-identity (DATA.md): geometry changes wholesale
+  while day-precision dates and every other field stay put.
+
+Exit:
+- [x] validate:data green on the full regenerated dataset (incl. V8)
+- [x] Determinism holds under the new seed: two consecutive importer runs are
+      byte-identical to each other
+- [x] Wayne signs off the PRIVACY.md inspection checklist for the re-jittered
+      geometry before anything is committed  (ship authorization, 2026-07-06)
+
+---
+
+## M8 — Source recon + local sync  [v2 — not started]
+
+Question: do Hammerhead and Ride with GPS exports carry the same start time and
+usable tracks, so the importer can read them instead of Strava?
+
+Work (sketch): confirm each source's export/API exposes a start timestamp equal
+to the Strava-derived `startEpochSeconds` (this makes M7's invariance claim
+verifiable, not just asserted); add source parsers behind the SAME clip +
+validate pipeline; run locally and confirm geometry matches the M7 baseline for
+the same rides (geometry-drift = 0).
+
+---
+
+## M9 — CI automation  [v2 — not started]
+
+Question: can the update loop run unattended, without touching Strava?
+
+Work (sketch): GitHub Actions cron → pull the delta from the M8 source(s) → run
+the SAME import + validate + geometry-drift pipeline → open a PR for review.
+Credentials live only in Actions secrets. Mirrors the retired M6 design, minus
+Strava.
