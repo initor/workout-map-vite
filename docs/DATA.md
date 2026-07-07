@@ -119,10 +119,18 @@ PR-based update flow produces unreviewable full-file diffs:
 - stable sort by activity id everywhere
 - fixed 5-decimal coordinate formatting (no float noise)
 - stable JSON key order; trailing newline; no generation timestamps in output
-- privacy jitter seeded from salted hash of activity id (PRIVACY.md) —
-  random-looking, fully reproducible
+- privacy jitter seeded from a salted hash of the activity's start time (UTC
+  epoch seconds; PRIVACY.md §algorithm) — random-looking, fully reproducible.
+  The start time is a SEED INPUT ONLY and never appears in output (V8).
 
 Verify: run the importer twice, `diff -r` the two staging dirs → empty.
+
+Changing the seed *basis* (as in the M7 start-time decoupling) is the one
+sanctioned cause of a full-geometry re-jitter: every track's clip distance
+changes at once, so that single regeneration is intentionally NOT byte-identical
+to the prior committed shards (day-precision dates and all other fields are
+unchanged). The rule above still holds afterward — two consecutive runs of the
+new importer are byte-identical to each other.
 
 ## Simplification
 

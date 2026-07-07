@@ -16,7 +16,7 @@ function line(n: number, stepDeg: number): Coord[] {
 
 test("V2: unconditionally drops the first and last 5 points", () => {
   const coords = line(30, 0.001); // ~89 m spacing => plenty of length
-  const res = clipTrack(coords, FAR_ZONE, "salt", "1001");
+  const res = clipTrack(coords, FAR_ZONE, "salt", 1753459538);
   expect(res).not.toBeNull();
   expect(res!.segments.length).toBe(1);
   expect(res!.totalPoints).toBe(20); // 30 - first5 - last5
@@ -27,29 +27,30 @@ test("V2: unconditionally drops the first and last 5 points", () => {
 
 test("clipDistance is jittered within [500,1200) and deterministic", () => {
   for (let i = 0; i < 200; i++) {
-    const cd = clipDistanceMeters("salt", `id${i}`, "home");
+    const cd = clipDistanceMeters("salt", 1_700_000_000 + i, "home");
     expect(cd).toBeGreaterThanOrEqual(500);
     expect(cd).toBeLessThan(1200);
   }
-  expect(clipDistanceMeters("salt", "1001", "home")).toBe(clipDistanceMeters("salt", "1001", "home"));
-  expect(clipDistanceMeters("saltA", "1001", "home")).not.toBe(clipDistanceMeters("saltB", "1001", "home"));
+  // same start time => same clip (byte-determinism); salt still shifts the result
+  expect(clipDistanceMeters("salt", 1753459538, "home")).toBe(clipDistanceMeters("salt", 1753459538, "home"));
+  expect(clipDistanceMeters("saltA", 1753459538, "home")).not.toBe(clipDistanceMeters("saltB", 1753459538, "home"));
 });
 
 test("drops activity when <20 points or <500 m remain", () => {
-  expect(clipTrack(line(10, 0.001), FAR_ZONE, "salt", "1")).toBeNull(); // 0 remain after endpoint drop
-  expect(clipTrack(line(40, 0.00001), FAR_ZONE, "salt", "1")).toBeNull(); // ~30 pts but <500 m
+  expect(clipTrack(line(10, 0.001), FAR_ZONE, "salt", 1700000001)).toBeNull(); // 0 remain after endpoint drop
+  expect(clipTrack(line(40, 0.00001), FAR_ZONE, "salt", 1700000001)).toBeNull(); // ~30 pts but <500 m
 });
 
 test("a mid-track zone clip splits into a MultiLineString", () => {
   const coords = line(60, 0.001); // ~5.2 km straight line
   const midZone: Zone[] = [{ name: "home", lat: 37, lng: -122 + 30 * 0.001 }]; // zone at the midpoint
-  const res = clipTrack(coords, midZone, "salt", "splittest");
+  const res = clipTrack(coords, midZone, "salt", 1700009999);
   expect(res).not.toBeNull();
   expect(res!.segments.length).toBeGreaterThanOrEqual(2); // split => MultiLineString upstream
 });
 
 test("output coordinates carry at most 5 decimals", () => {
-  const res = clipTrack(line(30, 0.001), FAR_ZONE, "salt", "1001");
+  const res = clipTrack(line(30, 0.001), FAR_ZONE, "salt", 1753459538);
   for (const seg of res!.segments) {
     for (const [lng, lat] of seg) {
       expect(String(lng).split(".")[1]?.length ?? 0).toBeLessThanOrEqual(5);

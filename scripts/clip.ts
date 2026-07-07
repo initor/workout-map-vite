@@ -27,15 +27,17 @@ export function round(n: number, dp: number): number {
 }
 
 // Deterministic uniform value in [0,1) from the salted per-(activity,zone) seed.
-// 52 bits keeps the integer within a safe double.
-export function uniform01(seedSalt: string, activityId: string, zoneName: string): number {
-  const hex = createHash("sha256").update(`${seedSalt}:${activityId}:${zoneName}`).digest("hex");
+// The activity is keyed by its start time (UTC epoch seconds) from the source
+// recording, NOT by any platform's activity id — see PRIVACY.md §algorithm (M7
+// seed decoupling). 52 bits keeps the integer within a safe double.
+export function uniform01(seedSalt: string, startEpochSeconds: number, zoneName: string): number {
+  const hex = createHash("sha256").update(`${seedSalt}:${startEpochSeconds}:${zoneName}`).digest("hex");
   return parseInt(hex.slice(0, 13), 16) / 2 ** 52;
 }
 
 // clipDistance in [500, 1200) m, deterministic per (activity, zone).
-export function clipDistanceMeters(seedSalt: string, activityId: string, zoneName: string): number {
-  return 500 + 700 * uniform01(seedSalt, activityId, zoneName);
+export function clipDistanceMeters(seedSalt: string, startEpochSeconds: number, zoneName: string): number {
+  return 500 + 700 * uniform01(seedSalt, startEpochSeconds, zoneName);
 }
 
 export interface ClipResult {
@@ -50,14 +52,14 @@ export function clipTrack(
   coords: Coord[],
   zones: Zone[],
   seedSalt: string,
-  activityId: string,
+  startEpochSeconds: number,
 ): ClipResult | null {
   const n = coords.length;
   const removed = new Array<boolean>(n).fill(false);
 
   // Steps 1-2: remove points within the jittered clipDistance of any zone.
   for (const zone of zones) {
-    const cd = clipDistanceMeters(seedSalt, activityId, zone.name);
+    const cd = clipDistanceMeters(seedSalt, startEpochSeconds, zone.name);
     const center: Coord = [zone.lng, zone.lat];
     for (let i = 0; i < n; i++) {
       if (!removed[i] && haversineMeters(coords[i], center) < cd) removed[i] = true;

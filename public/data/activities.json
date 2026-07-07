@@ -24,6 +24,18 @@
     "stravaUrl": "https://www.strava.com/activities/15576073608"
   },
   {
+    "id": "15643542977",
+    "name": "First trial run: Karoo computer",
+    "type": "Ride",
+    "date": "2025-08-31",
+    "year": 2025,
+    "distanceMeters": 8338,
+    "movingTimeSeconds": 2017,
+    "elevationGainMeters": 1,
+    "caloriesKcal": 127,
+    "stravaUrl": "https://www.strava.com/activities/15643542977"
+  },
+  {
     "id": "15662177380",
     "name": "My first group ride: Peninsula Loop",
     "type": "Ride",

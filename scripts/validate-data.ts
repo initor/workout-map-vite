@@ -28,9 +28,25 @@ const RAW_EXT_RE = /\.(gpx|tcx|fit|zip|gz)$/i;
 // hundreds of metres inside and is still caught.
 const MIN_CLIP_M = 500, V1_TOLERANCE_M = 2;
 const DIST_RATIO_MAX = 1.5; // clipped geometry must not exceed stored distance x1.5 (unit-error guard)
+// V8: the clip seed now derives from the activity start time (epoch seconds).
+// No day-precision field approaches 1e9, but a Unix epoch does (seconds ~1.7e9,
+// millis ~1.7e12) — so any numeric value that large is a timestamp/epoch leak (T3).
+const EPOCH_LIKE_MIN = 1e9;
 
 const errors: string[] = [];
 const fail = (m: string) => errors.push(m);
+
+// V8: recursively assert no numeric value looks like a timestamp/epoch. Only
+// JSON numbers are scanned; activity ids and Strava URLs are strings, unaffected.
+function assertNoEpochLike(value: unknown, where: string): void {
+  if (typeof value === "number") {
+    if (Number.isFinite(value) && Math.abs(value) >= EPOCH_LIKE_MIN) fail(`V8: ${where} = ${value} is epoch-like (>= ${EPOCH_LIKE_MIN}); a start time / timestamp must never leak (T3)`);
+  } else if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) assertNoEpochLike(value[i], `${where}[${i}]`);
+  } else if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) assertNoEpochLike(v, `${where}.${k}`);
+  }
+}
 
 function decimals(n: number): number {
   const s = String(n);
@@ -71,6 +87,7 @@ function main(): void {
   const actRaw = readFileSync(actPath, "utf8");
   if (!actRaw.endsWith("\n")) fail("activities.json: missing trailing newline");
   const summaries = JSON.parse(actRaw) as Record<string, unknown>[];
+  assertNoEpochLike(summaries, "activities.json"); // V8
   const distanceById = new Map<string, number>();
   for (const s of summaries) {
     const id = String(s.id ?? "");
@@ -97,6 +114,7 @@ function main(): void {
     const raw = readFileSync(join(dir, file), "utf8");
     if (!raw.endsWith("\n")) fail(`${file}: missing trailing newline`);
     const fc = JSON.parse(raw) as { type: string; features: Record<string, unknown>[] };
+    assertNoEpochLike(fc, file); // V8
     if (fc.type !== "FeatureCollection" || !Array.isArray(fc.features)) { fail(`${file}: not a FeatureCollection`); continue; }
     const ids: string[] = [];
     for (const feat of fc.features) {
@@ -146,6 +164,7 @@ function main(): void {
     const praw = readFileSync(placesPath, "utf8");
     if (!praw.endsWith("\n")) fail("places.json: missing trailing newline");
     const pj = JSON.parse(praw) as { places?: Record<string, unknown>[] };
+    assertNoEpochLike(pj, "places.json"); // V8
     if (!Array.isArray(pj.places)) fail("places.json: missing places array");
     for (const p of pj.places ?? []) {
       placeCount++;
@@ -170,6 +189,7 @@ function main(): void {
     if (!sraw.endsWith("\n")) fail("stats.json: missing trailing newline");
     if (DATE_ANYWHERE_RE.test(sraw)) fail("stats.json: contains a YYYY-MM-DD date-shaped string (aggregates only, no dates)"); // T3/T4
     const st = JSON.parse(sraw) as Record<string, unknown>;
+    assertNoEpochLike(st, "stats.json"); // V8
     for (const k of Object.keys(st)) if (!STATS_TOP_KEYS.has(k)) fail(`stats.json: unexpected top-level key "${k}"`);
     const checkLeaf = (where: string, b: unknown): Record<string, unknown> | null => {
       if (typeof b !== "object" || b === null) { fail(`stats.json: ${where} must be an object`); return null; }
@@ -227,7 +247,7 @@ function main(): void {
     if (errors.length > 40) console.error(`  ... and ${errors.length - 40} more`);
     process.exit(1);
   }
-  console.log(`[validate] OK — DATA.md schema + PRIVACY.md V1-V7 all pass`);
+  console.log(`[validate] OK — DATA.md schema + PRIVACY.md V1-V8 all pass`);
 }
 
 main();

@@ -31,8 +31,8 @@ const MONTHS: Record<string, string> = {
   Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
 };
 
-interface FitRecord { positionLat?: number; positionLong?: number }
-interface FitSession { totalDistance?: number; totalTimerTime?: number; totalCalories?: number; avgHeartRate?: number; maxHeartRate?: number }
+interface FitRecord { positionLat?: number; positionLong?: number; timestamp?: Date }
+interface FitSession { startTime?: Date; totalDistance?: number; totalTimerTime?: number; totalCalories?: number; avgHeartRate?: number; maxHeartRate?: number }
 
 interface Summary {
   id: string; name: string; type: string; date: string; year: number;
@@ -80,23 +80,35 @@ function parseDate(s: string): { date: string; year: number } | null {
   return { date: `${m[3]}-${mm}-${m[2].padStart(2, "0")}`, year: Number(m[3]) };
 }
 
-function parseFit(path: string): { coords: Coord[]; totalDistance?: number; totalTimerTime?: number; totalCalories?: number; avgHeartRate?: number; maxHeartRate?: number } {
+function parseFit(path: string): { coords: Coord[]; startEpochSeconds?: number; totalDistance?: number; totalTimerTime?: number; totalCalories?: number; avgHeartRate?: number; maxHeartRate?: number } {
   const buf = gunzipSync(readFileSync(path));
   const decoder = new Decoder(Stream.fromByteArray(new Uint8Array(buf)));
   const { messages } = decoder.read() as {
     messages: { recordMesgs?: FitRecord[]; sessionMesgs?: FitSession[] };
   };
   const coords: Coord[] = [];
+  // Clip-seed key (M7): the first GPS sample's timestamp as UTC epoch seconds.
+  // Intrinsic to the ride and portable across sources (PRIVACY.md §algorithm).
+  // SEED INPUT ONLY — this value is never written into any public artifact.
+  let startEpochSeconds: number | undefined;
   for (const rec of messages.recordMesgs ?? []) {
     if (rec.positionLat == null || rec.positionLong == null) continue;
     const lat = rec.positionLat * SEMICIRCLE_TO_DEG;
     const lng = rec.positionLong * SEMICIRCLE_TO_DEG;
     if (lat < -90 || lat > 90 || lng < -180 || lng > 180) continue;
+    if (startEpochSeconds === undefined && rec.timestamp instanceof Date) {
+      startEpochSeconds = Math.floor(rec.timestamp.getTime() / 1000);
+    }
     coords.push([lng, lat]);
   }
   const session = (messages.sessionMesgs ?? [])[0];
+  // Defensive fallback (positioned records normally carry a timestamp): the FIT
+  // session start, which coincides with the first sample in this export.
+  if (startEpochSeconds === undefined && session?.startTime instanceof Date) {
+    startEpochSeconds = Math.floor(session.startTime.getTime() / 1000);
+  }
   return {
-    coords,
+    coords, startEpochSeconds,
     totalDistance: session?.totalDistance, totalTimerTime: session?.totalTimerTime,
     totalCalories: session?.totalCalories, avgHeartRate: session?.avgHeartRate, maxHeartRate: session?.maxHeartRate,
   };
@@ -174,7 +186,11 @@ function main(): void {
     // Geometry: clipped (public) or full 5dp (staging escape hatch).
     let geometry: Geometry;
     if (zones) {
-      const clipped = clipTrack(track.coords, zones, seedSalt, id);
+      // Clip jitter is seeded on the ride's start time (epoch seconds), not the
+      // activity id (M7). startEpochSeconds is a seed input only; never emitted.
+      const startEpochSeconds = track.startEpochSeconds;
+      if (startEpochSeconds === undefined) { failures.push(`${id}: no start timestamp for clip seed`); continue; }
+      const clipped = clipTrack(track.coords, zones, seedSalt, startEpochSeconds);
       if (!clipped) { droppedByClip++; continue; }
       geometry = clipped.segments.length === 1
         ? { type: "LineString", coordinates: clipped.segments[0] }
