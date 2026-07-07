@@ -54,7 +54,6 @@ interface Place { name: string; kind: string; lat: number; lng: number }
 interface TrackProps { name?: string; type?: string; date?: string; distanceMeters?: number; movingTimeSeconds?: number; elevationGainMeters?: number; caloriesKcal?: number; avgHeartRate?: number; maxHeartRate?: number; stravaUrl?: string }
 
 const X_ICON = '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke-linecap="round"/></svg>'
-const HOME_GLYPH = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 7.5L8 3l5.5 4.5M4 6.5V13h8V6.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 // Metric glyphs (clock, route, mountain, flame, heart) + external-link. Small,
 // stroke=currentColor so they inherit the muted label colour. No icon dependency.
 const gsvg = (body: string): string => `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
@@ -179,8 +178,9 @@ function makeHomeDisc(map: maplibregl.Map, home: Place, color: string): maplibre
 }
 
 // Home marker + card popup, reflecting only the ENABLED indoor types. `entries` is
-// the enabled [type, TypeBucket][]; caller guarantees a non-zero total.
-function makeHomeMarker(map: maplibregl.Map, home: Place, entries: [string, TypeBucket][]): { marker: maplibregl.Marker; popup: maplibregl.Popup } {
+// the enabled [type, TypeBucket][]; caller guarantees a non-zero total. `color` is
+// the dominant indoor hue (shared with the heat disc) used to fill the dot.
+function makeHomeMarker(map: maplibregl.Map, home: Place, entries: [string, TypeBucket][], color: string): { marker: maplibregl.Marker; popup: maplibregl.Popup } {
   const count = entries.reduce((s, [, b]) => s + b.count, 0)
   const secs = entries.reduce((s, [, b]) => s + b.movingTimeSeconds, 0)
   const cal = entries.reduce((s, [, b]) => s + b.caloriesKcal, 0)
@@ -188,10 +188,21 @@ function makeHomeMarker(map: maplibregl.Map, home: Place, entries: [string, Type
   for (const [, b] of entries) for (const y of Object.keys(b.byYear)) years.add(y)
   const byYear = [...years].sort().map((y) => [y, entries.reduce((s, [, b]) => s + (b.byYear[y]?.count ?? 0), 0)] as const)
 
+  // Location-agnostic dot: a small hued point (the dominant indoor hue) with a
+  // white halo + shadow so it reads on either basemap. No always-on label; the
+  // click opens the indoor-aggregates popup. A <button> keeps pointer cursor + AX.
   const el = document.createElement('button')
   el.type = 'button'
-  el.className = 'flex items-center gap-1.5 rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-zinc-900 shadow-md ring-1 ring-black/5 backdrop-blur cursor-pointer dark:bg-zinc-900/85 dark:text-zinc-100 dark:ring-white/10'
-  el.innerHTML = `${HOME_GLYPH}<span>${escapeHtml(home.name)} &middot; ${count} workouts</span>`
+  el.title = home.name
+  el.setAttribute('aria-label', `${home.name}, indoor workout details`)
+  el.style.cursor = 'pointer'
+  el.style.width = '14px'
+  el.style.height = '14px'
+  el.style.padding = '0'
+  el.style.border = '0'
+  el.style.borderRadius = '9999px'
+  el.style.background = color
+  el.style.boxShadow = '0 0 0 2px #fff, 0 1px 4px rgba(0, 0, 0, 0.4)'
 
   const row = (label: string, value: string) => `<div class="flex items-baseline justify-between gap-6 text-xs"><span class="text-zinc-500 dark:text-zinc-400">${label}</span><span class="tabular-nums font-semibold">${value}</span></div>`
   const byYearHtml = byYear.map(([y, c]) => `<span>${y}: ${c}</span>`).join('')
@@ -202,10 +213,11 @@ function makeHomeMarker(map: maplibregl.Map, home: Place, entries: [string, Type
     `<div class="space-y-1 pt-0.5">${row('Indoor workouts', String(count))}${row('Total time', formatDuration(secs))}${row('Calories', formatKcal(cal))}</div>` +
     `<div class="border-t border-zinc-200 pt-1.5 dark:border-zinc-700"><div class="text-[10px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500">By year</div>` +
     `<div class="flex flex-wrap gap-x-4 gap-y-0.5 pt-1 text-xs tabular-nums">${byYearHtml}</div></div>` +
-    `</div>`
-  const popup = cardPopup(content, 16)
+    `</div>` +
+    `<div class="mt-3 border-t border-zinc-200 pt-2.5 dark:border-zinc-700"><a class="inline-flex items-center gap-1 text-xs font-medium hover:underline" style="color:${STRAVA_ORANGE}" href="${STRAVA_ATHLETE_URL}" target="_blank" rel="noopener noreferrer">View profile on Strava ${EXT_LINK}</a></div>`
+  const popup = cardPopup(content, 18)
   el.addEventListener('click', (ev) => { ev.stopPropagation(); popup.setLngLat([home.lng, home.lat]).addTo(map) })
-  const marker = new maplibregl.Marker({ element: el, anchor: 'left' }).setLngLat([home.lng, home.lat]).addTo(map)
+  const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([home.lng, home.lat]).addTo(map)
   return { marker, popup }
 }
 
@@ -225,8 +237,11 @@ export default function App() {
   const homeLocRef = useRef<Place | null>(null)
   const hoveredIdRef = useRef<string | number | null>(null)
   const styleReadyRef = useRef(false)
-  const view = useRef({ theme, onTypes })
-  view.current = { theme, onTypes }
+  const didInitialFrame = useRef(false)
+  const statsRef = useRef<Stats | null>(null)
+  statsRef.current = stats
+  const view = useRef({ theme, onTypes, onIndoor })
+  view.current = { theme, onTypes, onIndoor }
 
   // Idempotent (re)install of the track source (promoteId for feature-state hover)
   // + three line layers: casing (bottom), per-type-colored line (middle,
@@ -265,6 +280,39 @@ export default function App() {
     }
     const filter = buildTypeFilter([...view.current.onTypes])
     for (const id of ['tracks-casing', 'tracks-line', 'tracks-hit']) map.setFilter(id, filter)
+  }
+
+  // Bounding box of what is currently on the map: enabled GPS tracks, plus the
+  // Home point when any enabled indoor type has activity. null when nothing shows.
+  const computeVisibleBounds = (): maplibregl.LngLatBounds | null => {
+    const on = view.current.onTypes
+    const bounds = new maplibregl.LngLatBounds()
+    let has = false
+    const extend = (c: number[]): void => { bounds.extend(c as [number, number]); has = true }
+    for (const f of allFeatures.current) {
+      const t = (f.properties as TrackProps | null)?.type
+      if (!t || !on.has(t)) continue
+      const g = f.geometry
+      if (g.type === 'LineString') for (const c of g.coordinates) extend(c)
+      else if (g.type === 'MultiLineString') for (const line of g.coordinates) for (const c of line) extend(c)
+    }
+    const home = homeLocRef.current
+    const st = statsRef.current
+    if (home && st) {
+      const indoorTotal = [...view.current.onIndoor].reduce((s, t) => s + (st.byType[t]?.count ?? 0), 0)
+      if (indoorTotal > 0) extend([home.lng, home.lat])
+    }
+    return has ? bounds : null
+  }
+
+  // Frame the visible set with even padding. The SAME function drives the panel
+  // button and initial-load framing, so first paint and the button are identical.
+  const frameVisible = (animate: boolean): void => {
+    const map = mapRef.current
+    if (!map) return
+    const bounds = computeVisibleBounds()
+    if (!bounds) return
+    map.fitBounds(bounds, { padding: 48, maxZoom: 14, animate })
   }
 
   // Create the map once.
@@ -372,13 +420,27 @@ export default function App() {
     const total = entries.reduce((s, [, b]) => s + b.count, 0)
     if (total === 0) return
     const dominant = entries.reduce((a, b) => (b[1].count > a[1].count ? b : a))[0]
-    const disc = makeHomeDisc(map, home, typeColor(theme, dominant))
-    const { marker, popup } = makeHomeMarker(map, home, entries)
+    const color = typeColor(theme, dominant)
+    const disc = makeHomeDisc(map, home, color)
+    const { marker, popup } = makeHomeMarker(map, home, entries, color)
     return () => { disc.remove(); popup.remove(); marker.remove() }
   }, [onIndoor, stats, phase, theme])
 
+  // Frame everything once, on first ready paint, via the same function as the
+  // button, so the initial view and a button press produce identical framing.
+  useEffect(() => {
+    if (didInitialFrame.current || phase !== 'ready' || !mapRef.current) return
+    didInitialFrame.current = true
+    frameVisible(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase])
+
   const typeRows = stats ? Object.entries(stats.byType).sort((a, b) => b[1].count - a[1].count) : []
   const visibleCount = acts.reduce((n, a) => n + (onTypes.has(a.type) ? 1 : 0), 0)
+  // The panel's "frame visible" button is live only when something is on the map
+  // (enabled tracks, or the Home point when an indoor type is on). No camera move
+  // happens on filter toggle — framing is button- or initial-load-driven only.
+  const canFrame = phase === 'ready' && computeVisibleBounds() !== null
 
   const themeButton = (
     <button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -400,7 +462,10 @@ export default function App() {
       <div ref={containerRef} className="h-full w-full" />
 
       {/* The single control surface, top-left. Collapses to a pill on small screens. */}
-      <div className="absolute left-3 top-3 z-10 max-w-[calc(100vw-1.5rem)]">
+      {/* Top-left overlay: the control panel, with the "frame visible" button
+          attached right below it (kept next to the filters that drive framing). */}
+      <div className="absolute left-3 top-3 z-10 flex flex-col items-start gap-2">
+        <div className="max-w-[calc(100vw-1.5rem)]">
         {collapsed ? (
           <button type="button" onClick={() => setCollapsed(false)} aria-label="Show stats and filters"
             className="flex items-center gap-1.5 rounded-lg bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-zinc-900 shadow-lg ring-1 ring-black/5 backdrop-blur dark:bg-zinc-900/85 dark:text-zinc-100 dark:ring-white/10">
@@ -411,10 +476,14 @@ export default function App() {
           <div className="flex flex-col gap-2 rounded-lg bg-white/90 p-4 text-zinc-900 shadow-lg ring-1 ring-black/5 backdrop-blur dark:bg-zinc-900/85 dark:text-zinc-100 dark:ring-white/10">
             <div className="flex items-center justify-between gap-3">
               <a href={STRAVA_ATHLETE_URL} target="_blank" rel="noopener noreferrer"
-                style={{ color: STRAVA_ORANGE }}
-                className="inline-flex items-center gap-1 rounded-md bg-[#FC4C02]/10 px-2.5 py-1 text-xs font-bold ring-1 ring-inset ring-[#FC4C02]/30 transition hover:bg-[#FC4C02]/20">
-                Strava
-                <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3.5 8.5l5-5M4.5 3.5h4v4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                aria-label="Wayne Wen on Strava"
+                className="group inline-flex items-center gap-2">
+                <span className="text-sm font-medium group-hover:underline">Wayne Wen</span>
+                <span style={{ color: STRAVA_ORANGE }}
+                  className="inline-flex items-center gap-1 rounded-md bg-[#FC4C02]/10 px-2 py-0.5 text-xs font-bold ring-1 ring-inset ring-[#FC4C02]/30 transition group-hover:bg-[#FC4C02]/20">
+                  Strava
+                  <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3.5 8.5l5-5M4.5 3.5h4v4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </span>
               </a>
               <div className="flex items-center gap-1">
                 {themeButton}
@@ -472,6 +541,28 @@ export default function App() {
             )}
           </div>
         )}
+        </div>
+        {/* All map controls live here, next to the panel (not spread to another
+            corner): a zoom pair + "frame visible" (driven by the filters above). */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-stretch overflow-hidden rounded-lg bg-white/90 shadow-lg ring-1 ring-black/5 backdrop-blur dark:bg-zinc-900/85 dark:ring-white/10">
+            <button type="button" onClick={() => mapRef.current?.zoomOut()} aria-label="Zoom out" title="Zoom out"
+              className="px-2.5 py-1.5 text-zinc-600 transition hover:bg-zinc-500/10 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100">
+              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M5 10h10" strokeLinecap="round" /></svg>
+            </button>
+            <div className="w-px self-stretch bg-black/10 dark:bg-white/10" />
+            <button type="button" onClick={() => mapRef.current?.zoomIn()} aria-label="Zoom in" title="Zoom in"
+              className="px-2.5 py-1.5 text-zinc-600 transition hover:bg-zinc-500/10 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100">
+              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 5v10M5 10h10" strokeLinecap="round" /></svg>
+            </button>
+          </div>
+          <button type="button" onClick={() => frameVisible(true)} disabled={!canFrame}
+            aria-label="Frame visible activities" title="Frame visible activities"
+            className="flex items-center gap-1.5 rounded-lg bg-white/90 px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-lg ring-1 ring-black/5 backdrop-blur transition hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-zinc-600 dark:bg-zinc-900/85 dark:text-zinc-300 dark:ring-white/10 dark:hover:text-zinc-100 dark:disabled:hover:text-zinc-300">
+            <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="10" cy="10" r="3.25" /><path d="M10 2.5v3M10 14.5v3M2.5 10h3M14.5 10h3" strokeLinecap="round" /></svg>
+            Frame
+          </button>
+        </div>
       </div>
     </div>
   )
