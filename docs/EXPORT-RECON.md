@@ -121,3 +121,87 @@ Decisions (nothing dropped — both fields have real data):
   for HR), HR is emitted only where the FIT session has it — so in this export it
   appears on ~81% of Ride popups and on no Hike popups. Colour-by-HR (needs
   per-point streams) is deferred to BACKLOG.
+
+## M8 recon — Hammerhead API (rides source)
+
+Read from the live OpenAPI 3.1 spec (`https://api.hammerhead.io/v1/docs`, ReDoc;
+spec at `/v1/docs/openapi.yml`) on 2026-07-06 with the dev app's credentials in
+hand. No user data was fetched during recon — the spec is public; authenticated
+calls await Wayne's OAuth consent. Base URLs: auth `.../v1/auth`, API
+`.../v1/api/`.
+
+### FIT or processed points? -> ORIGINAL FIT.
+
+`GET /activities/{activityId}/file` -> "Get the FIT file of a single activity by
+ID", `Content-Type: application/vnd.ant.fit` (binary). The Karoo's original FIT
+is retrievable, so the SAME `@garmin/fitsdk` parse + clip pipeline applies with
+no new parser. (`GET /activities/{activityId}` also returns a Google-encoded
+`polyline` + metadata; we take the FIT for byte-level parity.)
+
+Passthrough caveat (drives exit criterion 2): "byte-identical to the export-
+derived same ride" holds only if Strava's *exported* FIT preserved the Karoo's
+original record positions. If Strava re-encoded/smoothed on export, the two FITs
+differ and so will the clip. The one-ride comparison tests exactly this.
+
+**Result (2026-07-06, `sync:rides --probe`): CONFIRMED byte-identical.** A recent
+ride present in both sources clipped identically — 8785 GPS points on each side,
+start epochs equal (seed delta 0 s), clipped geometry byte-for-byte the same.
+Strava's export preserves the Karoo positions, so FIT passthrough holds: the
+Hammerhead migration is geometry-invariant and the additive invariant holds by
+construction (with the sync guard catching any ride where it ever would not).
+
+### Auth -> OAuth 2.0 authorization code + rotating refresh.
+
+- Grant types (`POST /oauth/token`, form-urlencoded): `authorization_code`
+  (initial) and `refresh_token` (renewal).
+- Authorize: `GET /oauth/authorize?response_type=code&client_id&redirect_uri&
+  scope&state` -> consent page (user may narrow scopes) -> callback
+  `{redirect_uri}?code&state` (deny -> `?error=access_denied&state`).
+- Token response: `{ token_type:"Bearer", access_token, refresh_token,
+  expires_in, user_id }`. `expires_in` is per-token; schema example 52000 s
+  (~14.4 h).
+- Refresh rotation: the refresh grant returns a NEW `refresh_token` each time ->
+  persist the latest. `POST /oauth/deauthorize` invalidates current refresh
+  tokens (and unlinks the account).
+- Scope needed: `activity:read` ("read activities and be notified of new ones");
+  space-delimited. Redirect URI must match a configured endpoint — Wayne
+  registered `http://localhost:3001` for the local sync's one-time callback.
+
+### Identity -> ride start comes from the FIT, not the list.
+
+`ActivitySummary` = `{ id (e.g. "1000.activity.abcd"), name, createdAt (ISO,
+e.g. "2025-01-25T12:10:09.409Z"), duration (s), distance }`; `Activity` adds
+`{ activityType (RIDE/EBIKE/MOUNTAIN_BIKE/GRAVEL/EMOUNTAIN_BIKE/VELOMOBILE),
+description, polyline, updatedAt }`. `createdAt` is the upload/creation time,
+NOT the ride start, so our identity `startEpochSeconds` (PRIVACY.md, M7) is read
+from the fetched FIT exactly as the importer does. The Hammerhead `id` is opaque
+and platform-specific (unrelated to the Strava activity id), so it is NOT a
+cross-source key; `startEpochSeconds` is.
+
+List: `GET /activities?page&perPage(<=100)&startDate=YYYY-MM-DD` -> Pagination
+`{ totalItems, totalPages, perPage, currentPage }` + `data:[ActivitySummary]`.
+`startDate` bounds the candidate set for "newer than the newest published ride".
+
+### Webhooks -> one event, HMAC-signed.
+
+A single webhook, "Activity sync" (`POST` to your registered URL, body
+`ActivityWebhook { activityId, userId }`), signed `X-Hmac-Signature` =
+HMAC-SHA256(body, webhook secret). A new-activity nudge only (no payload beyond
+the ids) — a poll trigger, not a data feed. Relevant to M9 (a webhook receiver
+could replace/augment the cron); out of scope for M8's local sync.
+
+### Rate limits -> not documented.
+
+The v1 spec declares no rate limits, `429`, or throttling headers. Treat as
+unknown: page with `perPage=100`, bound by `startDate`, fetch each candidate FIT
+once, no tight loops. Revisit for M9 if the cron trips a limit.
+
+### Consequence for M8
+
+FIT passthrough => no new parser, and (pending the passthrough caveat) the
+existing clip/validate pipeline reproduces geometry exactly. The sync keys
+identity on `startEpochSeconds` read from each fetched FIT; because that value is
+absent from public artifacts by design (M7/V8), the sync maintains a gitignored
+`data/private/rides-index.json` (startEpochSeconds -> id/date/source) as the
+dedup / "newest ride" oracle, and persists tokens to a gitignored
+`data/private/hammerhead-token.json`. Neither leaves the machine.

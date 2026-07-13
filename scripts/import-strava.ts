@@ -16,28 +16,36 @@
 //        bun run import:strava -- --dir data/raw --allow-no-privacy-zones
 
 import { readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync, existsSync } from "node:fs";
-import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
-import { Decoder, Stream } from "@garmin/fitsdk";
 import { clipTrack, round } from "./clip.ts";
 import type { Coord, Zone } from "./clip.ts";
+import { parseFit } from "./fit.ts";
 
-const SEMICIRCLE_TO_DEG = 180 / 2 ** 31;
 const ZONES_PATH = "data/private/privacy-zones.json";
 const PUBLIC_DIR = "public/data";
 const STAGING_DIR = "data/intermediate/staging";
+const EXPORT_SUBDIR = "export";       // data/raw/export/     — the Strava bulk export (activities.csv + activities/); replaced wholesale by `bun run update`
+const HAMMERHEAD_SUBDIR = "hammerhead"; // data/raw/hammerhead/ — API-fetched ride FITs, append-only by sync:rides
+const DEDUP_TOLERANCE_S = 60;         // two records within +-60 s of start are the same ride (M8)
+// FIT session `sport` -> our display type, for Hammerhead-only rides (no CSV row).
+const SPORT_TYPE: Record<string, string> = { cycling: "Ride", hiking: "Hike", walking: "Walk", running: "Run" };
 const MONTHS: Record<string, string> = {
   Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
   Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
 };
 
-interface FitRecord { positionLat?: number; positionLong?: number; timestamp?: Date }
-interface FitSession { startTime?: Date; totalDistance?: number; totalTimerTime?: number; totalCalories?: number; avgHeartRate?: number; maxHeartRate?: number }
-
 interface Summary {
   id: string; name: string; type: string; date: string; year: number;
   distanceMeters?: number; movingTimeSeconds?: number; elevationGainMeters?: number;
-  caloriesKcal?: number; avgHeartRate?: number; maxHeartRate?: number; stravaUrl: string;
+  caloriesKcal?: number; avgHeartRate?: number; maxHeartRate?: number; stravaUrl?: string;
+}
+// One ride before clipping, from either corpus. `startEpochSeconds` (M7 clip seed
+// + M8 cross-source identity) is a SEED INPUT ONLY — never emitted to an artifact.
+export interface Ride {
+  id: string; startEpochSeconds: number; coords: Coord[]; source: "export" | "hammerhead";
+  name: string; type: string; date: string; year: number;
+  distanceMeters?: number; movingTimeSeconds?: number; elevationGainMeters?: number;
+  caloriesKcal?: number; avgHeartRate?: number; maxHeartRate?: number; stravaUrl?: string;
 }
 interface Bucket { count: number; movingTimeSeconds: number; caloriesKcal: number; avgHeartRateBpm?: number }
 interface TypeBucket extends Bucket { byYear: Record<string, Bucket> }
@@ -46,6 +54,17 @@ type Geometry =
   | { type: "LineString"; coordinates: Coord[] }
   | { type: "MultiLineString"; coordinates: Coord[][] };
 interface Feature { type: "Feature"; properties: Record<string, string | number>; geometry: Geometry }
+
+// Sort by activity id ascending. Numeric Strava ids sort numerically (unchanged
+// from before); opaque Hammerhead-only ids (non-numeric, pre-backfill) sort after
+// them, lexically — a total, deterministic order for a mixed corpus.
+function byId(a: { id: string }, b: { id: string }): number {
+  const na = Number(a.id), nb = Number(b.id);
+  const aNum = Number.isFinite(na), bNum = Number.isFinite(nb);
+  if (aNum && bNum) return na - nb;
+  if (aNum !== bNum) return aNum ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
 
 function parseCSV(text: string): string[][] {
   const rows: string[][] = [];
@@ -80,38 +99,26 @@ function parseDate(s: string): { date: string; year: number } | null {
   return { date: `${m[3]}-${mm}-${m[2].padStart(2, "0")}`, year: Number(m[3]) };
 }
 
-function parseFit(path: string): { coords: Coord[]; startEpochSeconds?: number; totalDistance?: number; totalTimerTime?: number; totalCalories?: number; avgHeartRate?: number; maxHeartRate?: number } {
-  const buf = gunzipSync(readFileSync(path));
-  const decoder = new Decoder(Stream.fromByteArray(new Uint8Array(buf)));
-  const { messages } = decoder.read() as {
-    messages: { recordMesgs?: FitRecord[]; sessionMesgs?: FitSession[] };
-  };
-  const coords: Coord[] = [];
-  // Clip-seed key (M7): the first GPS sample's timestamp as UTC epoch seconds.
-  // Intrinsic to the ride and portable across sources (PRIVACY.md §algorithm).
-  // SEED INPUT ONLY — this value is never written into any public artifact.
-  let startEpochSeconds: number | undefined;
-  for (const rec of messages.recordMesgs ?? []) {
-    if (rec.positionLat == null || rec.positionLong == null) continue;
-    const lat = rec.positionLat * SEMICIRCLE_TO_DEG;
-    const lng = rec.positionLong * SEMICIRCLE_TO_DEG;
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) continue;
-    if (startEpochSeconds === undefined && rec.timestamp instanceof Date) {
-      startEpochSeconds = Math.floor(rec.timestamp.getTime() / 1000);
-    }
-    coords.push([lng, lat]);
+// Day-precision UTC date from epoch seconds, for Hammerhead-only rides (no CSV
+// row). Day only — never a time (PRIVACY.md T3).
+function dateFromEpoch(epochSeconds: number): { date: string; year: number } {
+  const d = new Date(epochSeconds * 1000);
+  const date = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  return { date, year: d.getUTCFullYear() };
+}
+
+// Merge the two corpora, deduped on startEpochSeconds within `toleranceS`.
+// A ride in both is a collision: prefer the Hammerhead geometry (+ its seed),
+// keep the export's labelled metadata (id/name/stravaUrl/...). A Hammerhead-only
+// ride is a new addition. Pure: inputs are not mutated.
+export function dedupeRides(exportRides: Ride[], hammerheadRides: Ride[], toleranceS: number): Ride[] {
+  const rides: Ride[] = exportRides.map((r) => ({ ...r }));
+  for (const hr of hammerheadRides) {
+    const match = rides.find((r) => Math.abs(r.startEpochSeconds - hr.startEpochSeconds) <= toleranceS);
+    if (match) { match.coords = hr.coords; match.startEpochSeconds = hr.startEpochSeconds; match.source = "hammerhead"; }
+    else rides.push({ ...hr });
   }
-  const session = (messages.sessionMesgs ?? [])[0];
-  // Defensive fallback (positioned records normally carry a timestamp): the FIT
-  // session start, which coincides with the first sample in this export.
-  if (startEpochSeconds === undefined && session?.startTime instanceof Date) {
-    startEpochSeconds = Math.floor(session.startTime.getTime() / 1000);
-  }
-  return {
-    coords, startEpochSeconds,
-    totalDistance: session?.totalDistance, totalTimerTime: session?.totalTimerTime,
-    totalCalories: session?.totalCalories, avgHeartRate: session?.avgHeartRate, maxHeartRate: session?.maxHeartRate,
-  };
+  return rides;
 }
 
 function serializeFeatureCollection(features: Feature[]): string {
@@ -147,7 +154,10 @@ function main(): void {
     process.exit(1);
   }
 
-  const rows = parseCSV(readFileSync(join(dir, "activities.csv"), "utf8"));
+  const EXPORT_DIR = join(dir, EXPORT_SUBDIR);
+  const HAMMERHEAD_DIR = join(dir, HAMMERHEAD_SUBDIR);
+
+  const rows = parseCSV(readFileSync(join(EXPORT_DIR, "activities.csv"), "utf8"));
   const header = rows[0];
   const col = (name: string) => header.indexOf(name);
   const iId = col("Activity ID"), iDate = col("Activity Date"), iName = col("Activity Name");
@@ -162,91 +172,112 @@ function main(): void {
   }
   const data = rows.slice(1).filter((r) => r.length > iFile);
 
-  const summaries: Summary[] = [];
-  const featuresByYear = new Map<number, { id: string; feature: Feature }[]>();
-  const importedTypes: Record<string, number> = {};
   const failures: string[] = [];
-  let withTrack = 0, droppedNoGps = 0, droppedByClip = 0, imported = 0, multiCount = 0;
+  let withTrack = 0, droppedNoGps = 0, droppedByClip = 0, multiCount = 0;
 
+  // --- collect EXPORT rides (CSV-driven; metadata from CSV + FIT session) ---
+  const exportRides: Ride[] = [];
   for (const r of data) {
     const type = (r[iType] ?? "").trim();
     const file = (r[iFile] ?? "").trim();
     if (!file) continue;
     withTrack++;
-
     const id = (r[iId] ?? "").trim();
     const parsedDate = parseDate((r[iDate] ?? "").trim());
     if (!parsedDate) { failures.push(`${id}: unparseable Activity Date`); continue; }
-
     let track;
-    try { track = parseFit(join(dir, file)); }
+    try { track = parseFit(readFileSync(join(EXPORT_DIR, file))); }
     catch { failures.push(`${id}: FIT decode failed`); continue; }
     if (track.coords.length < 2) { droppedNoGps++; continue; }
+    // startEpochSeconds is the M7 clip seed AND the M8 cross-source dedup key.
+    if (track.startEpochSeconds === undefined) { failures.push(`${id}: no start timestamp (clip seed / dedup key)`); continue; }
+    // Metadata (derivation unchanged): distance/HR from FIT session; elevation from
+    // the CSV; calories FIT-then-CSV; name/type/date from CSV; stravaUrl from id.
+    const elevRaw = iElev >= 0 ? Number((r[iElev] ?? "").trim()) : NaN;
+    const csvCal = iCalories >= 0 ? Number((r[iCalories] ?? "").trim()) : NaN;
+    exportRides.push({
+      id, startEpochSeconds: track.startEpochSeconds, coords: track.coords, source: "export",
+      name: (r[iName] ?? "").trim(), type, date: parsedDate.date, year: parsedDate.year,
+      distanceMeters: track.totalDistance != null ? Math.round(track.totalDistance) : undefined,
+      movingTimeSeconds: track.totalTimerTime != null ? Math.round(track.totalTimerTime) : undefined,
+      elevationGainMeters: Number.isFinite(elevRaw) ? Math.round(elevRaw) : undefined,
+      caloriesKcal: track.totalCalories != null ? Math.round(track.totalCalories) : (Number.isFinite(csvCal) ? Math.round(csvCal) : undefined),
+      avgHeartRate: track.avgHeartRate != null ? Math.round(track.avgHeartRate) : undefined,
+      maxHeartRate: track.maxHeartRate != null ? Math.round(track.maxHeartRate) : undefined,
+      stravaUrl: `https://www.strava.com/activities/${id}`,
+    });
+  }
 
-    // Geometry: clipped (public) or full 5dp (staging escape hatch).
+  // --- collect HAMMERHEAD rides (FIT-only; metadata from the FIT session) ---
+  // Append-only corpus keyed by startEpochSeconds. No CSV row -> no name / Strava
+  // id / stravaUrl until the export backfills them (matched on start time). Clipping
+  // only (zones present): the staging escape hatch stays export-only.
+  const hammerheadRides: Ride[] = [];
+  if (zones && existsSync(HAMMERHEAD_DIR)) {
+    for (const f of readdirSync(HAMMERHEAD_DIR).filter((n) => n.endsWith(".fit")).sort()) {
+      const hid = f.replace(/\.fit$/, "");
+      let track;
+      try { track = parseFit(readFileSync(join(HAMMERHEAD_DIR, f))); }
+      catch { failures.push(`${hid}: Hammerhead FIT decode failed`); continue; }
+      if (track.coords.length < 2 || track.startEpochSeconds === undefined) { droppedNoGps++; continue; }
+      const { date, year } = dateFromEpoch(track.startEpochSeconds);
+      hammerheadRides.push({
+        id: hid, startEpochSeconds: track.startEpochSeconds, coords: track.coords, source: "hammerhead",
+        name: "", type: SPORT_TYPE[track.sport ?? ""] ?? "Ride", date, year,
+        distanceMeters: track.totalDistance != null ? Math.round(track.totalDistance) : undefined,
+        movingTimeSeconds: track.totalTimerTime != null ? Math.round(track.totalTimerTime) : undefined,
+        elevationGainMeters: track.totalAscent != null ? Math.round(track.totalAscent) : undefined,
+        caloriesKcal: track.totalCalories != null ? Math.round(track.totalCalories) : undefined,
+        avgHeartRate: track.avgHeartRate != null ? Math.round(track.avgHeartRate) : undefined,
+        maxHeartRate: track.maxHeartRate != null ? Math.round(track.maxHeartRate) : undefined,
+      });
+    }
+  }
+
+  // --- dedup on startEpochSeconds (+-60 s): export + hammerhead -> one corpus ---
+  // Collision prefers Hammerhead geometry (see dedupeRides). With FIT passthrough
+  // the two clips are byte-identical, so previously published geometry is
+  // unchanged; a real sync confirms that additively via the sync guard.
+  const rides = dedupeRides(exportRides, hammerheadRides, DEDUP_TOLERANCE_S);
+
+  // --- clip (public) or 5dp passthrough (staging) + build artifacts ---
+  const summaries: Summary[] = [];
+  const featuresByYear = new Map<number, { id: string; feature: Feature }[]>();
+  const importedTypes: Record<string, number> = {};
+  let imported = 0;
+  for (const ride of rides) {
     let geometry: Geometry;
     if (zones) {
-      // Clip jitter is seeded on the ride's start time (epoch seconds), not the
-      // activity id (M7). startEpochSeconds is a seed input only; never emitted.
-      const startEpochSeconds = track.startEpochSeconds;
-      if (startEpochSeconds === undefined) { failures.push(`${id}: no start timestamp for clip seed`); continue; }
-      const clipped = clipTrack(track.coords, zones, seedSalt, startEpochSeconds);
+      const clipped = clipTrack(ride.coords, zones, seedSalt, ride.startEpochSeconds);
       if (!clipped) { droppedByClip++; continue; }
       geometry = clipped.segments.length === 1
         ? { type: "LineString", coordinates: clipped.segments[0] }
         : { type: "MultiLineString", coordinates: clipped.segments };
       if (clipped.segments.length > 1) multiCount++;
     } else {
-      geometry = { type: "LineString", coordinates: track.coords.map((c) => [round(c[0], 5), round(c[1], 5)] as Coord) };
+      geometry = { type: "LineString", coordinates: ride.coords.map((c) => [round(c[0], 5), round(c[1], 5)] as Coord) };
     }
     imported++;
-    importedTypes[type] = (importedTypes[type] || 0) + 1;
+    importedTypes[ride.type] = (importedTypes[ride.type] || 0) + 1;
 
-    const distanceMeters = track.totalDistance != null ? Math.round(track.totalDistance) : undefined;
-    const movingTimeSeconds = track.totalTimerTime != null ? Math.round(track.totalTimerTime) : undefined;
-    // Elevation from the CSV "Elevation Gain" (metres). The FIT session carries
-    // totalAscent only for Rides; the CSV covers Rides AND Hikes and matches FIT
-    // where both exist, so it is the fuller, single source for the imported set.
-    const elevRaw = iElev >= 0 ? Number((r[iElev] ?? "").trim()) : NaN;
-    const elevationGainMeters = Number.isFinite(elevRaw) ? Math.round(elevRaw) : undefined;
-    // Calories: FIT session total_calories, else the CSV Calories column (recon:
-    // FIT covers 90% but only 13% of Rides; CSV covers 100%). HR: FIT session only
-    // (recon: present on Rides, absent on other types); no per-point streams.
-    const csvCal = iCalories >= 0 ? Number((r[iCalories] ?? "").trim()) : NaN;
-    const caloriesKcal = track.totalCalories != null ? Math.round(track.totalCalories)
-      : (Number.isFinite(csvCal) ? Math.round(csvCal) : undefined);
-    const avgHeartRate = track.avgHeartRate != null ? Math.round(track.avgHeartRate) : undefined;
-    const maxHeartRate = track.maxHeartRate != null ? Math.round(track.maxHeartRate) : undefined;
-    const name = (r[iName] ?? "").trim();
-    const stravaUrl = `https://www.strava.com/activities/${id}`;
+    // Single properties object, shared by the summary (activities.json) and the
+    // feature (tracks-*.geojson) so they stay identical; omit absent fields.
+    const props: Record<string, string | number> = { id: ride.id, name: ride.name, type: ride.type, date: ride.date, year: ride.year };
+    if (ride.distanceMeters != null) props.distanceMeters = ride.distanceMeters;
+    if (ride.movingTimeSeconds != null) props.movingTimeSeconds = ride.movingTimeSeconds;
+    if (ride.elevationGainMeters != null) props.elevationGainMeters = ride.elevationGainMeters;
+    if (ride.caloriesKcal != null) props.caloriesKcal = ride.caloriesKcal;
+    if (ride.avgHeartRate != null) props.avgHeartRate = ride.avgHeartRate;
+    if (ride.maxHeartRate != null) props.maxHeartRate = ride.maxHeartRate;
+    if (ride.stravaUrl != null) props.stravaUrl = ride.stravaUrl;
 
-    const summary: Summary = { id, name, type, date: parsedDate.date, year: parsedDate.year };
-    if (distanceMeters != null) summary.distanceMeters = distanceMeters;
-    if (movingTimeSeconds != null) summary.movingTimeSeconds = movingTimeSeconds;
-    if (elevationGainMeters != null) summary.elevationGainMeters = elevationGainMeters;
-    if (caloriesKcal != null) summary.caloriesKcal = caloriesKcal;
-    if (avgHeartRate != null) summary.avgHeartRate = avgHeartRate;
-    if (maxHeartRate != null) summary.maxHeartRate = maxHeartRate;
-    summary.stravaUrl = stravaUrl;
-    summaries.push(summary);
-
-    const properties: Record<string, string | number> = { id, name, type, date: parsedDate.date, year: parsedDate.year };
-    if (distanceMeters != null) properties.distanceMeters = distanceMeters;
-    if (movingTimeSeconds != null) properties.movingTimeSeconds = movingTimeSeconds;
-    if (elevationGainMeters != null) properties.elevationGainMeters = elevationGainMeters;
-    if (caloriesKcal != null) properties.caloriesKcal = caloriesKcal;
-    if (avgHeartRate != null) properties.avgHeartRate = avgHeartRate;
-    if (maxHeartRate != null) properties.maxHeartRate = maxHeartRate;
-    properties.stravaUrl = stravaUrl;
-    const feature: Feature = { type: "Feature", properties, geometry };
-    const bucket = featuresByYear.get(parsedDate.year) ?? [];
-    bucket.push({ id, feature });
-    featuresByYear.set(parsedDate.year, bucket);
+    summaries.push(props as unknown as Summary);
+    const bucket = featuresByYear.get(ride.year) ?? [];
+    bucket.push({ id: ride.id, feature: { type: "Feature", properties: props, geometry } });
+    featuresByYear.set(ride.year, bucket);
   }
 
-  const byId = (a: { id: string }, b: { id: string }) => Number(a.id) - Number(b.id);
   summaries.sort(byId);
-
   resetOutput(outDir, isPublic);
   writeFileSync(join(outDir, "activities.json"), JSON.stringify(summaries, null, 2) + "\n");
   const years = [...featuresByYear.keys()].sort((a, b) => a - b);
@@ -344,4 +375,5 @@ function main(): void {
   console.log(`[import] stats.json: ${totals.count} activities across ${byTypeYear.size} type(s), ${byYear.size} year(s)`);
 }
 
-main();
+// Run only as a script, not when imported by tests (which use dedupeRides / Ride).
+if (import.meta.main) main();

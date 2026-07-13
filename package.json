@@ -11,6 +11,8 @@
     "import:strava": "bun scripts/import-strava.ts",
     "validate:data": "bun scripts/validate-data.ts",
     "check:geometry": "bun scripts/check-geometry-drift.ts",
+    "update": "bun scripts/update.ts",
+    "sync:rides": "bun scripts/sync-rides.ts",
     "test": "bun test scripts"
   },
   "dependencies": {

@@ -233,24 +233,78 @@ Exit:
 
 ---
 
-## M8 — Source recon + local sync  [v2 — not started]
+## M8 — Source recon + local ride-stream sync  [DONE 2026-07-06]
 
-Question: do Hammerhead and Ride with GPS exports carry the same start time and
-usable tracks, so the importer can read them instead of Strava?
+Question: can rides come straight from Hammerhead (the Karoo's own cloud) with
+geometry identical to the retired Strava-export path?
 
-Work (sketch): confirm each source's export/API exposes a start timestamp equal
-to the Strava-derived `startEpochSeconds` (this makes M7's invariance claim
-verifiable, not just asserted); add source parsers behind the SAME clip +
-validate pipeline; run locally and confirm geometry matches the M7 baseline for
-the same rides (geometry-drift = 0).
+Recording topology (two disjoint streams):
+- Karoo records RIDES only -> Hammerhead -> (mirrors to RWGPS / Strava).
+- Apple Watch records EVERYTHING ELSE -> Strava.
+Target architecture is source-per-stream: rides automated from Hammerhead;
+indoor + misc refreshed quarterly via the existing Strava-export `bun run
+update` path. Strava's only unique role was being the confluence of both
+streams; that role is retired.
+
+Recon outcome (2026-07-06, see EXPORT-RECON.md §M8): Hammerhead serves the
+original FIT (`GET /activities/{id}/file`); OAuth 2.0 auth-code + rotating
+refresh; one HMAC-signed new-activity webhook; no documented rate limits. FIT
+passthrough => the SAME clip/validate pipeline, no new parser.
+
+Work:
+- `scripts/sync-rides.ts` (`bun run sync:rides`), local only: OAuth against
+  Hammerhead (one-time consent via a localhost:3001 callback listener; tokens in
+  gitignored `data/private/hammerhead-token.json`, rotating refresh; `activity:read`
+  scope only). Fetches ride FITs newer than the newest published ride into the
+  append-only corpus `data/raw/hammerhead/{activityId}.fit`, then rebuilds through
+  the SAME `import:strava` + `validate:data` pipeline.
+- Filesystem IS the index (no state file to drift): "already fetched" = the file
+  exists; candidate set = API list ids minus the directory listing. `public/data`
+  stays a pure function of `data/raw/` (export + hammerhead), so full rebuilds and
+  the determinism verifier keep working. Identity = `startEpochSeconds` read from
+  the FIT (absent from public data by M7/V8); dedup runs inside the importer.
+- Layout: `data/raw/export/` (replaced wholesale by `bun run update`) vs
+  `data/raw/hammerhead/` (append-only by sync) — so a fresh export cannot delete
+  synced rides (PRIVACY.md R3).
+- Merge: dedupe on `startEpochSeconds` (+-60 s); collision prefers the Hammerhead
+  geometry + keeps the export's labelled metadata (the `stravaUrl` backfill on the
+  next `bun run update`); never duplicate.
+- Additive invariant, mechanically enforced: after merge + validate, `sync:rides`
+  classifies the diff vs pre-sync `public/data` (shared `geometry-diff.ts`,
+  same classifier as `check:geometry`). ADDITIVE -> proceed; MUTATING (any
+  previously published geometry changed/removed) -> abort, restore the working
+  tree, report. Unit-tested (a colliding FIT with different geometry aborts).
+- Determinism: two consecutive syncs with no new upstream -> byte-identical.
+
+Exit:
+- [x] EXPORT-RECON.md updated with the recon answers
+- [x] One real recent ride fetched via API renders locally; its clipped geometry
+      vs the export-derived SAME ride: **byte-identical (FIT passthrough confirmed
+      2026-07-06 via `sync:rides --probe`; 8785 pts each, seed delta 0 s)**
+- [x] validate:data green; nothing committed to `public/data/` without Wayne's go
+      (this milestone changes no `public/data/`)
+- [x] Tokens live only in a gitignored local env file; nothing secret in code or
+      logs
+- [x] Additive invariant mechanically enforced (sync classifies vs pre-sync
+      public/data; MUTATING aborts + restores) and unit-tested
+
+Credentials: `data/private/hammerhead.env` (HAMMERHEAD_CLIENT_ID / _SECRET),
+gitignored; OAuth redirect `http://localhost:3001`.
 
 ---
 
-## M9 — CI automation  [v2 — not started]
+## M9 — CI automation  [v2 — gated on M8 exit]
 
 Question: can the update loop run unattended, without touching Strava?
 
-Work (sketch): GitHub Actions cron → pull the delta from the M8 source(s) → run
-the SAME import + validate + geometry-drift pipeline → open a PR for review.
-Credentials live only in Actions secrets. Mirrors the retired M6 design, minus
-Strava.
+Work (sketch): GitHub Actions cron (or the M8 webhook as a poll trigger) → pull
+the delta from Hammerhead → run the SAME import + validate + geometry-drift
+pipeline → open a PR for review. Credentials live only in Actions secrets.
+Mirrors the retired M6 design, minus Strava. Records the trust-boundary decision
+(what runs in CI vs locally, where the zones file and the Hammerhead FIT corpus
+live) before any automation lands.
+
+Open design question (do not solve in M8): M8's rotating refresh + token-in-a-
+local-file works locally but not across stateless CI runs — a rotated refresh
+token must survive between Actions runs (encrypted artifact, Actions-secret
+write-back, or an external store). Resolve as part of M9's trust boundary.

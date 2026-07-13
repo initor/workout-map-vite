@@ -26,7 +26,7 @@ flowchart LR
     B --> C["importer<br/>bun scripts/"]
     Z["data/private/privacy-zones.json<br/>(gitignored: zones + salt)"] -.-> C
     C --> D["public/data/<br/>activities.json · tracks-YYYY.geojson<br/>stats.json · places.json"]
-    D --> V{"validate:data<br/>V1-V7"}
+    D --> V{"validate:data<br/>V1-V8"}
     V -->|green| E["commit / PR"]
     E --> F["Vercel CD"]
     F --> G["map.waynewen.com<br/>Vite + React + MapLibre"]
@@ -50,28 +50,48 @@ Before anything reaches `public/data/`:
 - The first and last 5 points of every track are dropped unconditionally
 - Dates only, never times; excluded activities are absent, not flagged
 - `bun run validate:data` enforces all of this mechanically (assertions
-  V1-V7) and gates every data commit
+  V1-V8) and gates every data commit
 
 Home is shown deliberately, at ~1 km grid precision, a recorded decision,
 not a leak. Full threat model: [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Updating the data
 
+Two disjoint sources, one pipeline (see [docs/PLAN.md](docs/PLAN.md) M8). Public
+data stays a pure function of `data/raw/` (`export/` + `hammerhead/`). Each command
+below **rebuilds and validates for you** — you only eyeball and commit.
+
+**Rides** — from the Hammerhead Karoo, via the API (the common case):
+
 ```bash
-# 1. Request a fresh export: Strava → Settings → My Account → Download Your Archive
-# 2. Unzip into data/raw/   (only activities.csv and activities/ are read)
+bun run sync:rides   # first run opens a browser for one-time Hammerhead consent
+                     # (grant activity:read ONLY). Then, unattended: fetch new ride
+                     # FITs into data/raw/hammerhead/, rebuild public/data/ from the
+                     # whole corpus, validate (V1-V8), and enforce the additive
+                     # invariant:  ADDITIVE -> public/data updated (uncommitted)
+                     #             MUTATING -> aborts + restores (a published track moved)
+```
 
-bun run import:strava        # parse → clip → write public/data/
-bun run validate:data        # must be green
-bun run dev                  # eyeball locally
+**Everything else** — indoor + misc, from a quarterly Strava bulk export:
 
+```bash
+# Strava -> Settings -> My Account -> Download Your Archive, unzip it
+bun run update -- --from <unzipped-export-dir>
+# replaces data/raw/export/ ONLY (never touches hammerhead/), rebuilds, validates,
+# and prints the geometry-drift verdict.
+```
+
+Then, for either source:
+
+```bash
+bun run dev          # eyeball the new/updated tracks locally
 git add public/data && git commit -m "data: update activities" && git push
 # Vercel deploys automatically
 ```
 
-If regeneration changes track geometry (not just properties or new
-activities), stop and re-run the inspection checklist in
-[docs/PRIVACY.md](docs/PRIVACY.md) before pushing.
+New or changed tracks are new privacy surface — run the
+[docs/PRIVACY.md](docs/PRIVACY.md) inspection checklist before pushing.
+Properties/stats-only updates (no geometry change) don't need it.
 
 ## Development
 
@@ -91,6 +111,13 @@ Docs: [docs/PLAN.md](docs/PLAN.md) (milestones + exit criteria) ·
 [AGENTS.md](AGENTS.md) first.
 
 ## Roadmap: near-real-time sync (designed, not built)
+
+> **Superseded (2026-07-06):** the Strava API stayed non-compliant for public
+> display, so automated sync moved to the Hammerhead Karoo API (rides) with the
+> quarterly Strava *export* for everything else. `bun run sync:rides` (M8) is the
+> live local sync; the CI cron below is M9. See [docs/PLAN.md](docs/PLAN.md)
+> M6-M9. The flow is unchanged in shape — only the source and the token handling
+> differ.
 
 Manual updates are fine until they aren't. When they get annoying, tier 2
 activates, server-side only:
