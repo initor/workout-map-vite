@@ -117,9 +117,19 @@ activity id and the violating distance only, never the zone location.
   be loud, never silently permissive.
 - **R2** Changes to `public/data/` land only together with a green
   `validate:data` run.
-- **R3** Raw export handling: raw exports live only under `data/raw/`
-  (gitignored, however they arrive); read only `activities.csv` and
-  `activities/`.
+- **R3** Raw corpus handling (M8, two disjoint sources): the Strava bulk export
+  lives under `data/raw/export/` (replaced wholesale by `bun run update`);
+  API-fetched ride FITs live under `data/raw/hammerhead/` (append-only by
+  `bun run sync:rides`). Both are gitignored, however they arrive. Read only
+  `activities.csv` + `activities/` from the export and `*.fit` from hammerhead.
+  `bun run update` replaces `export/` only, NEVER `hammerhead/`, so a fresh
+  export cannot delete synced rides. `public/data/` stays a pure function of
+  `data/raw/`.
+- **R4** Hammerhead sync secrets are local-only: the client id/secret
+  (`data/private/hammerhead.env`) and the rotating OAuth token
+  (`data/private/hammerhead-token.json`) are gitignored, never logged, never
+  committed; the sync requests only the `activity:read` scope. `startEpochSeconds`
+  is the cross-source ride identity AND a clip seed input — never emitted (V8).
 
 ## Inspection checklist (Wayne, at M3, before the first publish)
 
