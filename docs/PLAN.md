@@ -293,18 +293,54 @@ gitignored; OAuth redirect `http://localhost:3001`.
 
 ---
 
-## M9 — CI automation  [v2 — gated on M8 exit]
+## M9 — CI automation  [CODE COMPLETE 2026-07-06 — awaiting Wayne's Actions secrets]
 
-Question: can the update loop run unattended, without touching Strava?
+Question: can the ride update loop run unattended, opening PRs on its own?
 
-Work (sketch): GitHub Actions cron (or the M8 webhook as a poll trigger) → pull
-the delta from Hammerhead → run the SAME import + validate + geometry-drift
-pipeline → open a PR for review. Credentials live only in Actions secrets.
-Mirrors the retired M6 design, minus Strava. Records the trust-boundary decision
-(what runs in CI vs locally, where the zones file and the Hammerhead FIT corpus
-live) before any automation lands.
+Trust-boundary decision (Wayne, 2026-07-06): **Option A — full automation.** The
+zones secret goes into GitHub Actions secrets so CI can clip; CI opens a PR that
+Wayne reviews + merges. (Rejected Option B, "zones stay local, CI only nudges."
+Accepted the expanded blast radius — the privacy secret now also lives in the
+repo's Actions — in exchange for zero-touch.) The repo is PUBLIC.
 
-Open design question (do not solve in M8): M8's rotating refresh + token-in-a-
-local-file works locally but not across stateless CI runs — a rotated refresh
-token must survive between Actions runs (encrypted artifact, Actions-secret
-write-back, or an external store). Resolve as part of M9's trust boundary.
+Constraint that shapes everything: neither the FIT corpus (`data/raw/…`) nor the
+zones file is in the repo (both gitignored), so CI cannot do a full
+pure-function rebuild. CI works INCREMENTALLY.
+
+Architecture:
+- Actions cron (later: the Hammerhead webhook as a trigger) writes three secrets
+  to files at runtime: zones -> `data/private/privacy-zones.json`, creds ->
+  `data/private/hammerhead.env`, token -> `data/private/hammerhead-token.json`.
+- A CI sync mode fetches Hammerhead rides since the newest published date, clips
+  each, and dedups by **clipped-geometry match** against committed `public/data/`
+  (FIT passthrough => an already-published ride clips byte-identical -> skip it),
+  then APPENDS the genuinely-new rides, validates (V1-V8), and re-runs the
+  additive guard (append-only, so ADDITIVE by construction).
+- If anything new: push a `wayne/ci_sync_*` branch and open a PR. Never merges
+  itself; Wayne reviews the new tracks (PRIVACY.md inspection) and merges.
+
+Token persistence (the recorded open question): CI refreshes each run; if
+Hammerhead rotates the refresh token, the new one must survive to the next run.
+For a PUBLIC repo, do NOT commit the token (even encrypted). Plan: refresh token
+in an Actions secret; on rotation, write the new value back via the GitHub
+secrets API (a scoped PAT, itself a secret). If the refresh token proves
+non-rotating (to confirm at setup), a static secret suffices and the write-back
+is dropped.
+
+Operational consequence (document in README): CI-synced ride FITs never reach
+Wayne's LOCAL corpus, so a local full rebuild would miss them. Before a quarterly
+`bun run update`, run `bun run sync:rides` locally first to repopulate the corpus
+(it re-fetches everything not already local; no public/data change, passthrough).
+
+Exit (to build):
+- [x] CI sync mode (`sync:rides --ci` [`--dry-run`]): incremental fetch + clip +
+      geometry-dedup + append + validate + additive guard. Shared builders keep a
+      CI append byte-identical to a local rebuild. Dry-run verified against live.
+- [x] `.github/workflows/sync-rides.yml` cron: materialize secrets, run `--ci`,
+      persist the rotated token, open a PR (never merges).
+- [x] Token persistence: rotated token written back to the `HAMMERHEAD_TOKEN`
+      secret via a scoped PAT (drop it if refresh proves non-rotating — confirm at
+      setup).
+- [x] PRIVACY.md R5 (zones-in-CI trust boundary) + README operational note.
+- [ ] Wayne adds the Actions secrets (ZONES / ENV / TOKEN / SECRETS_PAT) and the
+      first CI-opened PR is reviewed + merged.

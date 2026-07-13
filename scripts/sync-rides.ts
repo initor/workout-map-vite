@@ -26,6 +26,7 @@ import { clipTrack } from "./clip.ts";
 import type { Zone } from "./clip.ts";
 import { parseFit } from "./fit.ts";
 import { classify, shardGeomFromDir } from "./geometry-diff.ts";
+import { hammerheadRideFromFit, clipRideToArtifacts, byId, serializeFeatureCollection, type Feature, type Summary } from "./import-strava.ts";
 
 const ENV_PATH = "data/private/hammerhead.env";
 const TOKEN_PATH = "data/private/hammerhead-token.json";
@@ -267,9 +268,65 @@ async function probe(): Promise<void> {
   console.log("[probe] no recent API ride found that is also in the export corpus; sync an older window or widen the export.");
 }
 
+// CI / incremental sync (M9): CI has no local corpus, so instead of a full
+// rebuild it fetches rides since the newest published day, clips each, dedups by
+// clipped-geometry against committed public/data (FIT passthrough => an already-
+// published ride clips byte-identical and is skipped), and APPENDS the genuinely-
+// new ones. Append-only => ADDITIVE by construction; validated + guarded anyway.
+// A CI-appended track is byte-identical to a later local rebuild (shared builders).
+// `--dry-run` reports what it would append without writing.
+async function ciSync(dryRun: boolean): Promise<void> {
+  const { seedSalt, zones } = loadZones();
+  const since = newestPublishedDate();
+  const publishedGeom = shardGeomFromDir(PUBLIC_DIR);      // id -> geometry string (baseline)
+  const publishedIds = new Set(publishedGeom.keys());
+  const publishedGeomSet = new Set(publishedGeom.values());
+
+  const token = await ensureToken();
+  const acts = await listActivities(token, since);
+
+  const newSummaries: Summary[] = [], newFeatures: Feature[] = [], newIds: string[] = [];
+  let skipped = 0, droppedClip = 0;
+  for (const a of acts) {
+    if (publishedIds.has(a.id)) { skipped++; continue; }                     // already synced (same id)
+    const ride = hammerheadRideFromFit(a.id, parseFit(await fetchFitBytes(token, a.id)));
+    if (!ride) continue;
+    const art = clipRideToArtifacts(ride, zones, seedSalt);
+    if (!art) { droppedClip++; continue; }
+    if (publishedGeomSet.has(JSON.stringify(art.feature.geometry))) { skipped++; continue; } // already published (other id; passthrough)
+    newSummaries.push(art.summary); newFeatures.push(art.feature); newIds.push(a.id);
+  }
+
+  console.log(`[ci] since ${since}: ${acts.length} activities | already published: ${skipped} | clip-dropped: ${droppedClip} | NEW: ${newIds.length}`);
+  if (newIds.length === 0) { console.log("[ci] nothing new; public/data unchanged."); return; }
+  if (dryRun) { console.log(`[ci] --dry-run: would append ${newIds.length}: ${newIds.join(", ")}`); return; }
+
+  // Append additively to activities.json + the per-year shards, re-sorted by id.
+  const acts2 = JSON.parse(readFileSync(PUBLIC_ACTIVITIES, "utf8")) as Summary[];
+  writeFileSync(PUBLIC_ACTIVITIES, JSON.stringify([...acts2, ...newSummaries].sort(byId), null, 2) + "\n");
+  const byYear = new Map<number, Feature[]>();
+  for (const f of newFeatures) { const y = f.properties.year as number; const arr = byYear.get(y) ?? []; arr.push(f); byYear.set(y, arr); }
+  for (const [year, feats] of byYear) {
+    const shard = join(PUBLIC_DIR, `tracks-${year}.geojson`);
+    const existing = existsSync(shard) ? (JSON.parse(readFileSync(shard, "utf8")).features as Feature[]) : [];
+    const merged = [...existing, ...feats].sort((a, b) => byId({ id: String(a.properties.id) }, { id: String(b.properties.id) }));
+    writeFileSync(shard, serializeFeatureCollection(merged));
+  }
+
+  execSync("bun scripts/validate-data.ts public/data", { stdio: "inherit" });
+  const cls = classify(publishedGeom, shardGeomFromDir(PUBLIC_DIR));
+  if (cls.mutating) {
+    console.error(`[ci] FATAL — MUTATING (${cls.changed.length} changed, ${cls.removed.length} removed): ${[...cls.changed, ...cls.removed].join(", ")}`);
+    process.exit(2);
+  }
+  console.log(`[ci] ADDITIVE — appended ${cls.added.length} new track(s): ${cls.added.join(", ")}`);
+  console.log(`SYNC_NEW_IDS=${newIds.join(",")}`); // consumed by the workflow for the PR body
+}
+
 async function main(): Promise<void> {
-  const probeMode = process.argv.slice(2).includes("--probe");
-  if (probeMode) await probe();
+  const args = process.argv.slice(2);
+  if (args.includes("--probe")) await probe();
+  else if (args.includes("--ci")) await ciSync(args.includes("--dry-run"));
   else await syncNew();
 }
 

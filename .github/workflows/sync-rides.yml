@@ -1,0 +1,96 @@
+# M9 — unattended Hammerhead ride sync -> PR.
+#
+# Trust boundary (Wayne, 2026-07-06, Option A): the privacy zones secret runs in
+# CI so it can clip. GitHub encrypts Actions secrets, masks them in logs, and does
+# NOT expose them to fork PRs. This workflow NEVER prints the zones file (T5); it
+# only writes it to a gitignored path for the clip step to read.
+#
+# One-time setup (Wayne, in repo Settings -> Secrets and variables -> Actions):
+#   HAMMERHEAD_ZONES        contents of data/private/privacy-zones.json
+#   HAMMERHEAD_ENV          contents of data/private/hammerhead.env
+#   HAMMERHEAD_TOKEN        contents of data/private/hammerhead-token.json (after one local run)
+#   HAMMERHEAD_SECRETS_PAT  a fine-grained PAT with this repo's "Secrets: read+write"
+#                           (only needed IF Hammerhead rotates the refresh token; the
+#                           write-back step keeps HAMMERHEAD_TOKEN fresh. If refresh is
+#                           non-rotating, delete that secret + the "Persist token" step.)
+#
+# It never merges. It opens a PR; Wayne runs the PRIVACY.md inspection and merges.
+
+name: sync-rides
+
+on:
+  schedule:
+    - cron: "0 15 * * *"   # daily 15:00 UTC
+  workflow_dispatch: {}     # manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-rides
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      # Write the three secrets to their gitignored paths. Values are masked in
+      # logs; the zones file is never echoed anywhere.
+      - name: Materialize secrets
+        run: |
+          mkdir -p data/private
+          cat > data/private/privacy-zones.json <<< "$ZONES"
+          cat > data/private/hammerhead.env <<< "$ENV"
+          cat > data/private/hammerhead-token.json <<< "$TOKEN"
+        env:
+          ZONES: ${{ secrets.HAMMERHEAD_ZONES }}
+          ENV: ${{ secrets.HAMMERHEAD_ENV }}
+          TOKEN: ${{ secrets.HAMMERHEAD_TOKEN }}
+
+      # Incremental: fetch new rides -> clip -> geometry-dedup -> append ->
+      # validate (V1-V8) -> additive guard. Prints SYNC_NEW_IDS=... if it appended.
+      # Skips cleanly (no failure mail) until the three secrets are configured.
+      - name: Sync new rides
+        env:
+          ZONES: ${{ secrets.HAMMERHEAD_ZONES }}
+          ENV: ${{ secrets.HAMMERHEAD_ENV }}
+          TOKEN: ${{ secrets.HAMMERHEAD_TOKEN }}
+        run: |
+          if [ -z "$ZONES" ] || [ -z "$ENV" ] || [ -z "$TOKEN" ]; then
+            echo "::notice::Hammerhead secrets not configured yet; skipping (add HAMMERHEAD_ZONES / HAMMERHEAD_ENV / HAMMERHEAD_TOKEN in repo secrets)."
+            exit 0
+          fi
+          bun run sync:rides -- --ci | tee "$RUNNER_TEMP/sync.log"
+
+      # Refresh tokens rotate -> persist the (possibly) new token back to the
+      # secret so the next run can authenticate. No-op if HAMMERHEAD_SECRETS_PAT is
+      # unset. Reads the token from stdin (kept out of the command line / logs).
+      - name: Persist rotated token
+        if: env.PAT != ''
+        env:
+          PAT: ${{ secrets.HAMMERHEAD_SECRETS_PAT }}
+          GH_TOKEN: ${{ secrets.HAMMERHEAD_SECRETS_PAT }}
+        run: gh secret set HAMMERHEAD_TOKEN --repo "$GITHUB_REPOSITORY" < data/private/hammerhead-token.json
+
+      # Open a PR only if something was appended. Never merges.
+      - name: Open PR for new rides
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NEW="$(grep -oE 'SYNC_NEW_IDS=.*' "$RUNNER_TEMP/sync.log" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+          if [ -z "$NEW" ]; then echo "no new rides; nothing to open."; exit 0; fi
+          BR="wayne/ci_sync_$(date -u +%Y%m%d_%H%M%S)"
+          git config user.name "hammerhead-sync[bot]"
+          git config user.email "hammerhead-sync[bot]@users.noreply.github.com"
+          git checkout -b "$BR"
+          git add public/data
+          git commit -m "chore(data): sync rides from Hammerhead ($(date -u +%Y-%m-%d))"
+          git push -u origin "$BR"
+          gh pr create \
+            --title "chore(data): sync rides from Hammerhead ($(date -u +%Y-%m-%d))" \
+            --body "Automated M9 Hammerhead sync — additive (validate:data V1-V8 + additive guard passed in CI). New ride id(s): \`$NEW\`. Run the PRIVACY.md inspection on the new tracks before merging (merging deploys them)."
