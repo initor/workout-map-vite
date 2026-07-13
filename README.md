@@ -93,6 +93,15 @@ New or changed tracks are new privacy surface — run the
 [docs/PRIVACY.md](docs/PRIVACY.md) inspection checklist before pushing.
 Properties/stats-only updates (no geometry change) don't need it.
 
+**Automated (M9):** a daily GitHub Actions workflow (`.github/workflows/sync-rides.yml`)
+runs `sync:rides --ci` — fetch new rides → clip → geometry-dedup → append →
+validate (V1-V8) → additive guard — and **opens a PR** for you to inspect + merge.
+It never merges itself. One caveat: CI-synced FITs don't reach your **local**
+corpus, so before a quarterly `bun run update`, run `bun run sync:rides` locally
+first to repopulate it (re-fetches everything not already local; no `public/data`
+change). Setup + the trust-boundary rationale: [docs/PLAN.md](docs/PLAN.md) M9,
+[docs/PRIVACY.md](docs/PRIVACY.md) R5.
+
 ## Development
 
 ```bash

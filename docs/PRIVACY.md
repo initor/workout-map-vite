@@ -130,6 +130,14 @@ activity id and the violating distance only, never the zone location.
   (`data/private/hammerhead-token.json`) are gitignored, never logged, never
   committed; the sync requests only the `activity:read` scope. `startEpochSeconds`
   is the cross-source ride identity AND a clip seed input — never emitted (V8).
+- **R5** M9 CI trust boundary (Wayne, 2026-07-06, Option A): the zones secret is
+  placed in GitHub Actions secrets so CI can clip. Actions secrets are encrypted,
+  masked in logs, and withheld from fork PRs; the workflow writes the zones file
+  to its gitignored path and NEVER prints it (T5). CI has no corpus, so it only
+  APPENDS new rides (never a full rebuild), gated by `validate:data` (V1-V8) + the
+  additive classifier, and opens a PR — it never merges. Wayne runs the inspection
+  checklist on the new tracks and merges. A CI-appended track is byte-identical to
+  a later local rebuild (shared builders), so `check:geometry` never diverges.
 
 ## Inspection checklist (Wayne, at M3, before the first publish)
 

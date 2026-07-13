@@ -19,7 +19,7 @@ import { readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync, existsSync
 import { join } from "node:path";
 import { clipTrack, round } from "./clip.ts";
 import type { Coord, Zone } from "./clip.ts";
-import { parseFit } from "./fit.ts";
+import { parseFit, type ParsedFit } from "./fit.ts";
 
 const ZONES_PATH = "data/private/privacy-zones.json";
 const PUBLIC_DIR = "public/data";
@@ -34,7 +34,7 @@ const MONTHS: Record<string, string> = {
   Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
 };
 
-interface Summary {
+export interface Summary {
   id: string; name: string; type: string; date: string; year: number;
   distanceMeters?: number; movingTimeSeconds?: number; elevationGainMeters?: number;
   caloriesKcal?: number; avgHeartRate?: number; maxHeartRate?: number; stravaUrl?: string;
@@ -50,15 +50,15 @@ export interface Ride {
 interface Bucket { count: number; movingTimeSeconds: number; caloriesKcal: number; avgHeartRateBpm?: number }
 interface TypeBucket extends Bucket { byYear: Record<string, Bucket> }
 interface Stats { totals: Bucket; byType: Record<string, TypeBucket>; byYear: Record<string, Bucket> }
-type Geometry =
+export type Geometry =
   | { type: "LineString"; coordinates: Coord[] }
   | { type: "MultiLineString"; coordinates: Coord[][] };
-interface Feature { type: "Feature"; properties: Record<string, string | number>; geometry: Geometry }
+export interface Feature { type: "Feature"; properties: Record<string, string | number>; geometry: Geometry }
 
 // Sort by activity id ascending. Numeric Strava ids sort numerically (unchanged
 // from before); opaque Hammerhead-only ids (non-numeric, pre-backfill) sort after
 // them, lexically — a total, deterministic order for a mixed corpus.
-function byId(a: { id: string }, b: { id: string }): number {
+export function byId(a: { id: string }, b: { id: string }): number {
   const na = Number(a.id), nb = Number(b.id);
   const aNum = Number.isFinite(na), bNum = Number.isFinite(nb);
   if (aNum && bNum) return na - nb;
@@ -121,7 +121,55 @@ export function dedupeRides(exportRides: Ride[], hammerheadRides: Ride[], tolera
   return rides;
 }
 
-function serializeFeatureCollection(features: Feature[]): string {
+// Build one Ride from a parsed Hammerhead FIT (FIT-only metadata; no CSV row, so
+// no name / Strava id / stravaUrl until the export backfills them). null if the
+// FIT has no usable track or no start time. Shared by the importer and sync:rides.
+export function hammerheadRideFromFit(id: string, track: ParsedFit): Ride | null {
+  if (track.coords.length < 2 || track.startEpochSeconds === undefined) return null;
+  const { date, year } = dateFromEpoch(track.startEpochSeconds);
+  return {
+    id, startEpochSeconds: track.startEpochSeconds, coords: track.coords, source: "hammerhead",
+    name: "", type: SPORT_TYPE[track.sport ?? ""] ?? "Ride", date, year,
+    distanceMeters: track.totalDistance != null ? Math.round(track.totalDistance) : undefined,
+    movingTimeSeconds: track.totalTimerTime != null ? Math.round(track.totalTimerTime) : undefined,
+    elevationGainMeters: track.totalAscent != null ? Math.round(track.totalAscent) : undefined,
+    caloriesKcal: track.totalCalories != null ? Math.round(track.totalCalories) : undefined,
+    avgHeartRate: track.avgHeartRate != null ? Math.round(track.avgHeartRate) : undefined,
+    maxHeartRate: track.maxHeartRate != null ? Math.round(track.maxHeartRate) : undefined,
+  };
+}
+
+// Clip one ride and build its activities.json summary + tracks-*.geojson feature
+// (or 5dp passthrough when zones is null). null if the clip drops it. The summary
+// and feature share one properties object so they serialize identically. Shared
+// by the importer and sync:rides so a CI append matches a local rebuild byte-for-byte.
+export function clipRideToArtifacts(
+  ride: Ride, zones: Zone[] | null, seedSalt: string,
+): { summary: Summary; feature: Feature; split: boolean } | null {
+  let geometry: Geometry;
+  let split = false;
+  if (zones) {
+    const clipped = clipTrack(ride.coords, zones, seedSalt, ride.startEpochSeconds);
+    if (!clipped) return null;
+    split = clipped.segments.length > 1;
+    geometry = split
+      ? { type: "MultiLineString", coordinates: clipped.segments }
+      : { type: "LineString", coordinates: clipped.segments[0] };
+  } else {
+    geometry = { type: "LineString", coordinates: ride.coords.map((c) => [round(c[0], 5), round(c[1], 5)] as Coord) };
+  }
+  const props: Record<string, string | number> = { id: ride.id, name: ride.name, type: ride.type, date: ride.date, year: ride.year };
+  if (ride.distanceMeters != null) props.distanceMeters = ride.distanceMeters;
+  if (ride.movingTimeSeconds != null) props.movingTimeSeconds = ride.movingTimeSeconds;
+  if (ride.elevationGainMeters != null) props.elevationGainMeters = ride.elevationGainMeters;
+  if (ride.caloriesKcal != null) props.caloriesKcal = ride.caloriesKcal;
+  if (ride.avgHeartRate != null) props.avgHeartRate = ride.avgHeartRate;
+  if (ride.maxHeartRate != null) props.maxHeartRate = ride.maxHeartRate;
+  if (ride.stravaUrl != null) props.stravaUrl = ride.stravaUrl;
+  return { summary: props as unknown as Summary, feature: { type: "Feature", properties: props, geometry }, split };
+}
+
+export function serializeFeatureCollection(features: Feature[]): string {
   const body = features.map((f) => "    " + JSON.stringify(f)).join(",\n");
   return `{\n  "type": "FeatureCollection",\n  "features": [\n${body}\n  ]\n}\n`;
 }
@@ -219,18 +267,9 @@ function main(): void {
       let track;
       try { track = parseFit(readFileSync(join(HAMMERHEAD_DIR, f))); }
       catch { failures.push(`${hid}: Hammerhead FIT decode failed`); continue; }
-      if (track.coords.length < 2 || track.startEpochSeconds === undefined) { droppedNoGps++; continue; }
-      const { date, year } = dateFromEpoch(track.startEpochSeconds);
-      hammerheadRides.push({
-        id: hid, startEpochSeconds: track.startEpochSeconds, coords: track.coords, source: "hammerhead",
-        name: "", type: SPORT_TYPE[track.sport ?? ""] ?? "Ride", date, year,
-        distanceMeters: track.totalDistance != null ? Math.round(track.totalDistance) : undefined,
-        movingTimeSeconds: track.totalTimerTime != null ? Math.round(track.totalTimerTime) : undefined,
-        elevationGainMeters: track.totalAscent != null ? Math.round(track.totalAscent) : undefined,
-        caloriesKcal: track.totalCalories != null ? Math.round(track.totalCalories) : undefined,
-        avgHeartRate: track.avgHeartRate != null ? Math.round(track.avgHeartRate) : undefined,
-        maxHeartRate: track.maxHeartRate != null ? Math.round(track.maxHeartRate) : undefined,
-      });
+      const ride = hammerheadRideFromFit(hid, track);
+      if (!ride) { droppedNoGps++; continue; }
+      hammerheadRides.push(ride);
     }
   }
 
@@ -246,34 +285,14 @@ function main(): void {
   const importedTypes: Record<string, number> = {};
   let imported = 0;
   for (const ride of rides) {
-    let geometry: Geometry;
-    if (zones) {
-      const clipped = clipTrack(ride.coords, zones, seedSalt, ride.startEpochSeconds);
-      if (!clipped) { droppedByClip++; continue; }
-      geometry = clipped.segments.length === 1
-        ? { type: "LineString", coordinates: clipped.segments[0] }
-        : { type: "MultiLineString", coordinates: clipped.segments };
-      if (clipped.segments.length > 1) multiCount++;
-    } else {
-      geometry = { type: "LineString", coordinates: ride.coords.map((c) => [round(c[0], 5), round(c[1], 5)] as Coord) };
-    }
+    const art = clipRideToArtifacts(ride, zones, seedSalt);
+    if (!art) { droppedByClip++; continue; }
     imported++;
     importedTypes[ride.type] = (importedTypes[ride.type] || 0) + 1;
-
-    // Single properties object, shared by the summary (activities.json) and the
-    // feature (tracks-*.geojson) so they stay identical; omit absent fields.
-    const props: Record<string, string | number> = { id: ride.id, name: ride.name, type: ride.type, date: ride.date, year: ride.year };
-    if (ride.distanceMeters != null) props.distanceMeters = ride.distanceMeters;
-    if (ride.movingTimeSeconds != null) props.movingTimeSeconds = ride.movingTimeSeconds;
-    if (ride.elevationGainMeters != null) props.elevationGainMeters = ride.elevationGainMeters;
-    if (ride.caloriesKcal != null) props.caloriesKcal = ride.caloriesKcal;
-    if (ride.avgHeartRate != null) props.avgHeartRate = ride.avgHeartRate;
-    if (ride.maxHeartRate != null) props.maxHeartRate = ride.maxHeartRate;
-    if (ride.stravaUrl != null) props.stravaUrl = ride.stravaUrl;
-
-    summaries.push(props as unknown as Summary);
+    if (art.split) multiCount++;
+    summaries.push(art.summary);
     const bucket = featuresByYear.get(ride.year) ?? [];
-    bucket.push({ id: ride.id, feature: { type: "Feature", properties: props, geometry } });
+    bucket.push({ id: ride.id, feature: art.feature });
     featuresByYear.set(ride.year, bucket);
   }
 
