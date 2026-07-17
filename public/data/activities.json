@@ -460,27 +460,45 @@
     "stravaUrl": "https://www.strava.com/activities/19181148115"
   },
   {
-    "id": "145695.activity.1d0bb931-1285-4d2c-b466-59742a4be7c0",
-    "name": "",
+    "id": "19220413671",
+    "name": "Solo 40 miles: Cañada Loop",
     "type": "Ride",
     "date": "2026-07-07",
     "year": 2026,
     "distanceMeters": 65478,
     "movingTimeSeconds": 9357,
     "elevationGainMeters": 561,
+    "caloriesKcal": 1448,
     "avgHeartRate": 148,
-    "maxHeartRate": 168
+    "maxHeartRate": 168,
+    "stravaUrl": "https://www.strava.com/activities/19220413671"
   },
   {
-    "id": "145695.activity.f91e0421-86d5-4947-9845-e2a83817b4b8",
-    "name": "",
+    "id": "19261464648",
+    "name": "SF to Mt. Tam East Peak",
     "type": "Ride",
     "date": "2026-07-10",
     "year": 2026,
     "distanceMeters": 73621,
     "movingTimeSeconds": 14784,
     "elevationGainMeters": 1254,
+    "caloriesKcal": 2005,
     "avgHeartRate": 148,
-    "maxHeartRate": 172
+    "maxHeartRate": 172,
+    "stravaUrl": "https://www.strava.com/activities/19261464648"
+  },
+  {
+    "id": "19342687162",
+    "name": "solo: palo alto to Cañada Road",
+    "type": "Ride",
+    "date": "2026-07-16",
+    "year": 2026,
+    "distanceMeters": 53984,
+    "movingTimeSeconds": 7854,
+    "elevationGainMeters": 479,
+    "caloriesKcal": 1200,
+    "avgHeartRate": 149,
+    "maxHeartRate": 166,
+    "stravaUrl": "https://www.strava.com/activities/19342687162"
   }
 ]
