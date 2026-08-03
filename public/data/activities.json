@@ -500,5 +500,19 @@
     "avgHeartRate": 149,
     "maxHeartRate": 166,
     "stravaUrl": "https://www.strava.com/activities/19342687162"
+  },
+  {
+    "id": "19576428988",
+    "name": "Afternoon Ride",
+    "type": "Ride",
+    "date": "2026-08-02",
+    "year": 2026,
+    "distanceMeters": 30093,
+    "movingTimeSeconds": 4289,
+    "elevationGainMeters": 269,
+    "caloriesKcal": 677,
+    "avgHeartRate": 164,
+    "maxHeartRate": 182,
+    "stravaUrl": "https://www.strava.com/activities/19576428988"
   }
 ]
