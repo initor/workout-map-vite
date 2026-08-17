@@ -1,8 +1,8 @@
 {
   "totals": {
-    "count": 305,
-    "movingTimeSeconds": 530789,
-    "caloriesKcal": 88213,
+    "count": 316,
+    "movingTimeSeconds": 551983,
+    "caloriesKcal": 91679,
     "avgHeartRateBpm": 147
   },
   "byType": {
@@ -33,9 +33,9 @@
       }
     },
     "Ride": {
-      "count": 36,
-      "movingTimeSeconds": 184764,
-      "caloriesKcal": 27640,
+      "count": 37,
+      "movingTimeSeconds": 193226,
+      "caloriesKcal": 28979,
       "avgHeartRateBpm": 146,
       "byYear": {
         "2025": {
@@ -44,9 +44,9 @@
           "caloriesKcal": 12467
         },
         "2026": {
-          "count": 17,
-          "movingTimeSeconds": 101167,
-          "caloriesKcal": 15173
+          "count": 18,
+          "movingTimeSeconds": 109629,
+          "caloriesKcal": 16512
         }
       }
     },
@@ -64,10 +64,10 @@
       }
     },
     "Workout": {
-      "count": 264,
-      "movingTimeSeconds": 338031,
-      "caloriesKcal": 59842,
-      "avgHeartRateBpm": 149,
+      "count": 274,
+      "movingTimeSeconds": 350763,
+      "caloriesKcal": 61969,
+      "avgHeartRateBpm": 148,
       "byYear": {
         "2025": {
           "count": 122,
@@ -75,9 +75,9 @@
           "caloriesKcal": 28744
         },
         "2026": {
-          "count": 142,
-          "movingTimeSeconds": 176976,
-          "caloriesKcal": 31098
+          "count": 152,
+          "movingTimeSeconds": 189708,
+          "caloriesKcal": 33225
         }
       }
     }
@@ -89,9 +89,9 @@
       "caloriesKcal": 41942
     },
     "2026": {
-      "count": 159,
-      "movingTimeSeconds": 278143,
-      "caloriesKcal": 46271
+      "count": 170,
+      "movingTimeSeconds": 299337,
+      "caloriesKcal": 49737
     }
   }
 }
