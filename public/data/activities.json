@@ -514,5 +514,19 @@
     "avgHeartRate": 164,
     "maxHeartRate": 182,
     "stravaUrl": "https://www.strava.com/activities/19576428988"
+  },
+  {
+    "id": "19772610685",
+    "name": "Cañada Forty - Sand Hill Grand Loop",
+    "type": "Ride",
+    "date": "2026-08-16",
+    "year": 2026,
+    "distanceMeters": 62143,
+    "movingTimeSeconds": 8467,
+    "elevationGainMeters": 521,
+    "caloriesKcal": 1339,
+    "avgHeartRate": 163,
+    "maxHeartRate": 175,
+    "stravaUrl": "https://www.strava.com/activities/19772610685"
   }
 ]
