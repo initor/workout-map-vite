@@ -35,7 +35,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
@@ -77,20 +77,28 @@ jobs:
           GH_TOKEN: ${{ secrets.HAMMERHEAD_SECRETS_PAT }}
         run: gh secret set HAMMERHEAD_TOKEN --repo "$GITHUB_REPOSITORY" < data/private/hammerhead-token.json
 
-      # Open a PR only if something was appended. Never merges.
+      # Open a PR only if something was appended. Never merges. Idempotent: one
+      # fixed branch, force-pushed from today's main, so an unmerged sync PR is
+      # refreshed in place instead of a duplicate PR opening every day.
       - name: Open PR for new rides
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           NEW="$(grep -oE 'SYNC_NEW_IDS=.*' "$RUNNER_TEMP/sync.log" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
           if [ -z "$NEW" ]; then echo "no new rides; nothing to open."; exit 0; fi
-          BR="wayne/ci_sync_$(date -u +%Y%m%d_%H%M%S)"
+          BR="wayne/ci_sync"
           git config user.name "hammerhead-sync[bot]"
           git config user.email "hammerhead-sync[bot]@users.noreply.github.com"
           git checkout -b "$BR"
           git add public/data
           git commit -m "chore(data): sync rides from Hammerhead ($(date -u +%Y-%m-%d))"
-          git push -u origin "$BR"
+          git push --force -u origin "$BR"
+          OPEN="$(gh pr list --head "$BR" --state open --json number --jq '.[0].number')"
+          if [ -n "$OPEN" ]; then
+            gh pr comment "$OPEN" --body "Sync refreshed $(date -u +%Y-%m-%d): branch rebuilt from latest main. Pending new ride id(s): \`$NEW\`."
+            echo "sync PR #$OPEN already open; branch updated in place."
+            exit 0
+          fi
           gh pr create \
             --title "chore(data): sync rides from Hammerhead ($(date -u +%Y-%m-%d))" \
             --body "Automated M9 Hammerhead sync — additive (validate:data V1-V8 + additive guard passed in CI). New ride id(s): \`$NEW\`. Run the PRIVACY.md inspection on the new tracks before merging (merging deploys them)."
