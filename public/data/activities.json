@@ -540,5 +540,17 @@
     "elevationGainMeters": 500,
     "avgHeartRate": 159,
     "maxHeartRate": 174
+  },
+  {
+    "id": "145695.activity.961594d6-2942-4532-827c-ff04d0d6bf61",
+    "name": "",
+    "type": "Ride",
+    "date": "2026-08-30",
+    "year": 2026,
+    "distanceMeters": 62255,
+    "movingTimeSeconds": 8365,
+    "elevationGainMeters": 518,
+    "avgHeartRate": 158,
+    "maxHeartRate": 174
   }
 ]
