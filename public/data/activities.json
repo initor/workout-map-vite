@@ -530,27 +530,31 @@
     "stravaUrl": "https://www.strava.com/activities/19772610685"
   },
   {
-    "id": "145695.activity.7cc05169-f637-47ad-b083-adad3d10da86",
-    "name": "",
+    "id": "19857022352",
+    "name": "Afternoon Ride",
     "type": "Ride",
     "date": "2026-08-22",
     "year": 2026,
     "distanceMeters": 62921,
     "movingTimeSeconds": 8811,
     "elevationGainMeters": 500,
+    "caloriesKcal": 1366,
     "avgHeartRate": 159,
-    "maxHeartRate": 174
+    "maxHeartRate": 174,
+    "stravaUrl": "https://www.strava.com/activities/19857022352"
   },
   {
-    "id": "145695.activity.961594d6-2942-4532-827c-ff04d0d6bf61",
-    "name": "",
+    "id": "19969431937",
+    "name": "Afternoon Ride",
     "type": "Ride",
     "date": "2026-08-30",
     "year": 2026,
     "distanceMeters": 62255,
     "movingTimeSeconds": 8365,
     "elevationGainMeters": 518,
+    "caloriesKcal": 1406,
     "avgHeartRate": 158,
-    "maxHeartRate": 174
+    "maxHeartRate": 174,
+    "stravaUrl": "https://www.strava.com/activities/19969431937"
   }
 ]
