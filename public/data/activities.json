@@ -556,5 +556,17 @@
     "avgHeartRate": 158,
     "maxHeartRate": 174,
     "stravaUrl": "https://www.strava.com/activities/19969431937"
+  },
+  {
+    "id": "145695.activity.7f51d715-e1a4-4895-95da-dfd772445fe3",
+    "name": "",
+    "type": "Ride",
+    "date": "2026-09-07",
+    "year": 2026,
+    "distanceMeters": 61997,
+    "movingTimeSeconds": 8178,
+    "elevationGainMeters": 500,
+    "avgHeartRate": 160,
+    "maxHeartRate": 172
   }
 ]
