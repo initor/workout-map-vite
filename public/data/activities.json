@@ -556,5 +556,41 @@
     "avgHeartRate": 158,
     "maxHeartRate": 174,
     "stravaUrl": "https://www.strava.com/activities/19969431937"
+  },
+  {
+    "id": "145695.activity.4e59eb82-b71c-4b78-9e08-574f5826ff20",
+    "name": "",
+    "type": "Ride",
+    "date": "2026-09-20",
+    "year": 2026,
+    "distanceMeters": 61951,
+    "movingTimeSeconds": 8284,
+    "elevationGainMeters": 514,
+    "avgHeartRate": 152,
+    "maxHeartRate": 165
+  },
+  {
+    "id": "145695.activity.7f51d715-e1a4-4895-95da-dfd772445fe3",
+    "name": "",
+    "type": "Ride",
+    "date": "2026-09-07",
+    "year": 2026,
+    "distanceMeters": 61997,
+    "movingTimeSeconds": 8178,
+    "elevationGainMeters": 500,
+    "avgHeartRate": 160,
+    "maxHeartRate": 172
+  },
+  {
+    "id": "145695.activity.c39042e1-1126-4aac-bcb5-85e0dc6c97cb",
+    "name": "",
+    "type": "Ride",
+    "date": "2026-09-13",
+    "year": 2026,
+    "distanceMeters": 62014,
+    "movingTimeSeconds": 8405,
+    "elevationGainMeters": 509,
+    "avgHeartRate": 159,
+    "maxHeartRate": 171
   }
 ]
