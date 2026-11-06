@@ -642,6 +642,18 @@
     "maxHeartRate": 164
   },
   {
+    "id": "145695.activity.b76c0d32-4094-41ff-9574-3232a55c937b",
+    "name": "",
+    "type": "Ride",
+    "date": "2026-10-15",
+    "year": 2026,
+    "distanceMeters": 62048,
+    "movingTimeSeconds": 8373,
+    "elevationGainMeters": 499,
+    "avgHeartRate": 156,
+    "maxHeartRate": 168
+  },
+  {
     "id": "145695.activity.c39042e1-1126-4aac-bcb5-85e0dc6c97cb",
     "name": "",
     "type": "Ride",
