@@ -570,6 +570,30 @@
     "maxHeartRate": 170
   },
   {
+    "id": "145695.activity.169001f1-d537-4e29-be27-54eb524bdafb",
+    "name": "",
+    "type": "Ride",
+    "date": "2026-11-07",
+    "year": 2026,
+    "distanceMeters": 62048,
+    "movingTimeSeconds": 8363,
+    "elevationGainMeters": 498,
+    "avgHeartRate": 155,
+    "maxHeartRate": 170
+  },
+  {
+    "id": "145695.activity.333cdab0-664d-4bae-b712-289d8a832d10",
+    "name": "",
+    "type": "Ride",
+    "date": "2026-11-11",
+    "year": 2026,
+    "distanceMeters": 115914,
+    "movingTimeSeconds": 18755,
+    "elevationGainMeters": 1396,
+    "avgHeartRate": 144,
+    "maxHeartRate": 168
+  },
+  {
     "id": "145695.activity.4e59eb82-b71c-4b78-9e08-574f5826ff20",
     "name": "",
     "type": "Ride",
@@ -640,6 +664,18 @@
     "elevationGainMeters": 772,
     "avgHeartRate": 140,
     "maxHeartRate": 164
+  },
+  {
+    "id": "145695.activity.b76c0d32-4094-41ff-9574-3232a55c937b",
+    "name": "",
+    "type": "Ride",
+    "date": "2026-10-15",
+    "year": 2026,
+    "distanceMeters": 62048,
+    "movingTimeSeconds": 8373,
+    "elevationGainMeters": 499,
+    "avgHeartRate": 156,
+    "maxHeartRate": 168
   },
   {
     "id": "145695.activity.c39042e1-1126-4aac-bcb5-85e0dc6c97cb",
